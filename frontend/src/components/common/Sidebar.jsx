@@ -12,24 +12,24 @@ const NAV_SECTIONS = [
   {
     label: 'Main',
     items: [
-      { path: '/app/dashboard',       icon: LayoutDashboard, label: 'Dashboard' },
-      { path: '/app/notes',           icon: FileText,         label: 'AI Notes' },
-      { path: '/app/dsa',             icon: Code2,            label: 'DSA Engine' },
+      { path: '/',       icon: LayoutDashboard, label: 'Dashboard' },
+      { path: '/notes',           icon: FileText,         label: 'AI Notes' },
+      { path: '/dsa',             icon: Code2,            label: 'DSA Engine' },
     ],
   },
   {
     label: 'Career',
     items: [
-      { path: '/app/interviewer',     icon: Mic,              label: 'Interviewer' },
-      { path: '/app/resume',          icon: Briefcase,        label: 'Resume' },
-      { path: '/app/recommendations', icon: Star,             label: 'Recommendations' },
+      { path: '/interviewer',     icon: Mic,              label: 'Interviewer' },
+      { path: '/resume',          icon: Briefcase,        label: 'Resume' },
+      { path: '/recommendations', icon: Star,             label: 'Recommendations' },
     ],
   },
   {
     label: 'Productivity',
     items: [
-      { path: '/app/planner',         icon: Calendar,         label: 'Planner' },
-      { path: '/app/productivity',    icon: BarChart2,        label: 'Analytics' },
+      { path: '/planner',         icon: Calendar,         label: 'Planner' },
+      { path: '/productivity',    icon: BarChart2,        label: 'Analytics' },
     ],
   },
 ]
@@ -119,7 +119,7 @@ const Sidebar = ({ collapsed, onToggle }) => {
       <div className="px-2 py-3 border-t border-white/6 space-y-0.5">
  
         <NavLink
-          to="/app/profile"
+          to="/profile"
           className={({ isActive }) =>
             `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all group relative border
              ${isActive
