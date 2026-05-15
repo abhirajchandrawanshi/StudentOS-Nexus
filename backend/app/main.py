@@ -1,15 +1,29 @@
 from pydantic import BaseModel
-from rag.retriever import retrieve_chunks
-from rag.generator import generate_answer
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 import shutil
 
-from rag.pdf_loader import extract_text
-from rag.chunker import chunk_text
-from rag.embedder import create_embeddings
-from rag.vectordb import store_chunks
+from app.rag.retriever import retrieve_chunks
+from app.rag.generator import generate_answer
+from app.rag.pdf_loader import extract_text
+from app.rag.chunker import chunk_text
+from app.rag.embedder import create_embeddings
+from app.rag.vectordb import store_chunks
 
 app = FastAPI()
+
+# ─── CORS — allow frontend to call this API ────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",   # Vite dev server
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",   # fallback if port changes
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/")
@@ -24,7 +38,7 @@ def home():
 def upload_pdf(file: UploadFile = File(...)):
 
     # Save uploaded PDF
-    file_path = f"uploads/{file.filename}"
+    file_path = f"app/uploads/{file.filename}"
 
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)

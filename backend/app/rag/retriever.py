@@ -1,5 +1,5 @@
-from rag.embedder import model
-from rag.vectordb import collection
+from app.rag.embedder import model
+from app.rag.vectordb import collection
 
 def retrieve_chunks(query):
 
