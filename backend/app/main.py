@@ -9,8 +9,12 @@ from app.rag.pdf_loader import extract_text
 from app.rag.chunker import chunk_text
 from app.rag.embedder import create_embeddings
 from app.rag.vectordb import store_chunks
+from app.dsa.routes import router as dsa_router
 
 app = FastAPI()
+
+# Include DSA Router
+app.include_router(dsa_router, prefix="/dsa", tags=["DSA"])
 
 # ─── CORS — allow frontend to call this API ────────────────────────
 app.add_middleware(

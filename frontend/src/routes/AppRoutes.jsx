@@ -8,6 +8,7 @@ import Planner from "../pages/Planner";
 import Analytics from "../pages/Analytics";
 import Interviewer from "../pages/Interviewer";
 import Recommendations from "../pages/Recommendations";
+import Dsa from "../pages/Dsa";
 import NotFound from "../pages/NotFound";
 
 import ProtectedRoute from "./ProtectedRoute";
@@ -33,6 +34,7 @@ const AppRoutes = () => {
         <Route element={<DashboardLayout />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/notes" element={<Notes />} />
+          <Route path="/dsa" element={<Dsa />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/interviewer" element={<Interviewer />} />
