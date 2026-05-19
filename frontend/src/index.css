@@ -1,0 +1,138 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+/* STUDENTOS NEXUS — TOKYO NIGHTS */
+
+:root {
+  --background:          #FAF9FB;
+  --background-elevated: #FFFFFF;
+  --background-card:     #FFFFFF;
+  --background-hover:    #F5F3F7;
+  --foreground:          #1A0B2E;
+  --foreground-muted:    #64748B;
+  --foreground-subtle:   #94A3B8;
+  --primary:             #7C3AED;
+  --secondary:           #EC4899;
+  --accent:              #06B6D4;
+  --success:             #22C55E;
+  --warning:             #F59E0B;
+  --destructive:         #EF4444;
+  --muted:               #F5F3F7;
+  --muted-foreground:    #64748B;
+  --border:              #E9D5FF;
+  --input-background:    #FFFFFF;
+  --sidebar:             #FFFFFF;
+  --sidebar-border:      #E9D5FF;
+  --chart-1: #7C3AED; --chart-2: #EC4899;
+  --chart-3: #06B6D4; --chart-4: #22C55E; --chart-5: #F59E0B;
+}
+
+.dark {
+  --background:          #0F0A1E;
+  --background-elevated: #1A1229;
+  --background-card:     #1A1229;
+  --background-hover:    #2A1F3D;
+  --foreground:          #F8FAFC;
+  --foreground-muted:    #94A3B8;
+  --foreground-subtle:   #64748B;
+  --primary:             #7C3AED;
+  --secondary:           #EC4899;
+  --accent:              #06B6D4;
+  --success:             #22C55E;
+  --warning:             #F59E0B;
+  --destructive:         #EF4444;
+  --muted:               #2A1F3D;
+  --muted-foreground:    #94A3B8;
+  --border:              rgba(124,58,237,0.2);
+  --input-background:    rgba(26,18,41,0.6);
+  --sidebar:             #1A1229;
+  --sidebar-border:      rgba(124,58,237,0.2);
+  --chart-1: #7C3AED; --chart-2: #EC4899;
+  --chart-3: #06B6D4; --chart-4: #22C55E; --chart-5: #F59E0B;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; }
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--background); color: var(--foreground);
+  line-height: 1.5; transition: background 0.2s, color 0.2s;
+}
+::selection { background: rgba(124,58,237,0.25); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+.card {
+  background: var(--background-card);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.card-hover:hover { border-color: rgba(124,58,237,0.4); transform: translateY(-1px); }
+
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  font-size: 14px; font-weight: 500;
+  color: var(--foreground-muted);
+  cursor: pointer; text-decoration: none;
+  border-left: 2px solid transparent;
+  transition: all 0.12s ease; white-space: nowrap;
+}
+.nav-item:hover { background: var(--background-hover); color: var(--foreground); }
+.nav-item.active {
+  background: rgba(124,58,237,0.12);
+  color: var(--primary); border-left-color: var(--primary); font-weight: 600;
+}
+
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--primary); color: #fff;
+  font-size: 13px; font-weight: 600;
+  padding: 9px 18px; border-radius: 10px; border: none; cursor: pointer;
+  box-shadow: 0 4px 14px rgba(124,58,237,0.35); transition: all 0.15s;
+}
+.btn-primary:hover { background: #6d28d9; box-shadow: 0 6px 20px rgba(124,58,237,0.45); transform: translateY(-0.5px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; color: var(--foreground-muted);
+  font-size: 13px; font-weight: 500;
+  padding: 8px 14px; border-radius: 10px;
+  border: 1px solid var(--border); cursor: pointer; transition: all 0.15s;
+}
+.btn-ghost:hover { background: var(--background-hover); color: var(--foreground); border-color: rgba(124,58,237,0.4); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 20px; border: 1px solid;
+}
+.badge-primary   { background: rgba(124,58,237,0.12); color: var(--primary);   border-color: rgba(124,58,237,0.25); }
+.badge-secondary { background: rgba(236,72,153,0.12); color: var(--secondary); border-color: rgba(236,72,153,0.25); }
+.badge-success   { background: rgba(34,197,94,0.12);  color: var(--success);   border-color: rgba(34,197,94,0.25); }
+.badge-warning   { background: rgba(245,158,11,0.12); color: var(--warning);   border-color: rgba(245,158,11,0.25); }
+.badge-accent    { background: rgba(6,182,212,0.12);  color: var(--accent);    border-color: rgba(6,182,212,0.25); }
+
+.grad-primary { background: linear-gradient(135deg,#7C3AED,#EC4899); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.grad-accent  { background: linear-gradient(135deg,#06B6D4,#7C3AED); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+
+.progress-track { height: 6px; border-radius: 3px; background: var(--muted); overflow: hidden; }
+.progress-fill  { height: 100%; border-radius: 3px; transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes spin   { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes bounce3 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+
+.fade-up { animation: fadeUp 0.28s cubic-bezier(0.16,1,0.3,1) forwards; }
+.fade-in { animation: fadeIn 0.2s ease forwards; }
+.animate-spin { animation: spin 1s linear infinite; }
+.stagger-1{animation-delay:0ms} .stagger-2{animation-delay:60ms}
+.stagger-3{animation-delay:120ms} .stagger-4{animation-delay:180ms}
+.stagger-5{animation-delay:240ms} .stagger-6{animation-delay:300ms}
