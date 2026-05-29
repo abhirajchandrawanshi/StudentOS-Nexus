@@ -1,55 +1,83 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Mail, Lock, Loader2, BookOpen, ArrowRight, Sun, Moon } from 'lucide-react'
+import { Eye, EyeOff, Mail, Lock, User, GraduationCap, Loader2, BookOpen, Sun, Moon } from 'lucide-react'
 import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
 
-const Login = () => {
+const BRANCHES = [
+  'Computer Science', 'Information Technology', 'Electronics & Communication',
+  'Mechanical', 'Civil', 'Electrical', 'Data Science', 'AI & ML', 'Other',
+]
+
+const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
+
+const FieldError = ({ error }) =>
+  error ? (
+    <p className="text-xs mt-1.5" style={{ color: 'var(--destructive)' }}>{error}</p>
+  ) : null
+
+const Signup = () => {
   const navigate = useNavigate()
   const { login, setLoading, setError, isLoading, error, clearError } = useAuthStore()
   const { theme } = useUIStore()
   const isDark = theme === 'dark'
 
-  const [formData,     setFormData]     = useState({ email: '', password: '' })
+  const [formData, setFormData] = useState({
+    name: '', email: '', password: '', branch: '', year: '',
+  })
   const [showPassword, setShowPassword] = useState(false)
-  const [fieldErrors,  setFieldErrors]  = useState({})
+  const [fieldErrors, setFieldErrors] = useState({})
 
+  // ─── Validation ───────────────────────────────────────────────────
   const validate = () => {
     const errors = {}
+    if (!formData.name.trim()) errors.name = 'Name is required'
     if (!formData.email) errors.email = 'Email is required'
     else if (!/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Enter a valid email'
     if (!formData.password) errors.password = 'Password is required'
     else if (formData.password.length < 6) errors.password = 'Minimum 6 characters'
+    if (!formData.branch) errors.branch = 'Select your branch'
+    if (!formData.year) errors.year = 'Select your year'
     return errors
   }
 
+  // ─── Input change ─────────────────────────────────────────────────
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData((p) => ({ ...p, [name]: value }))
-    if (fieldErrors[name]) setFieldErrors((p) => ({ ...p, [name]: '' }))
+    setFormData((prev) => ({ ...prev, [name]: value }))
+    if (fieldErrors[name]) setFieldErrors((prev) => ({ ...prev, [name]: '' }))
     if (error) clearError()
   }
 
+  // ─── Submit ───────────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault()
     const errors = validate()
-    if (Object.keys(errors).length > 0) { setFieldErrors(errors); return }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      return
+    }
 
     try {
       setLoading(true)
       clearError()
       // ── TEMPORARY mock until backend ready ──
-      const mockUser = { name: 'Sakshi', email: formData.email, branch: 'Computer Science', year: '3rd Year' }
+      const mockUser = {
+        name: formData.name,
+        email: formData.email,
+        branch: formData.branch,
+        year: formData.year,
+      }
       login(mockUser, 'mock-token-123')
       navigate('/app/dashboard')
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Invalid email or password')
+      setError(err?.response?.data?.detail || 'An error occurred during sign up')
     } finally {
       setLoading(false)
     }
   }
-  
-  const handleGoogleLogin = () => {
+
+  const handleGoogleSignup = () => {
     setLoading(true)
     clearError()
     setTimeout(() => {
@@ -69,6 +97,21 @@ const Login = () => {
     padding: '11px 12px 11px 40px',
     width: '100%',
     outline: 'none',
+    transition: 'all 0.15s ease',
+    fontFamily: 'Inter, sans-serif',
+  })
+
+  const selectStyle = (field) => ({
+    background: 'var(--background-elevated)',
+    border: `1px solid ${fieldErrors[field] ? 'var(--destructive)' : 'var(--border)'}`,
+    color: formData[field] ? 'var(--foreground)' : 'var(--foreground-subtle)',
+    borderRadius: '12px',
+    fontSize: '13.5px',
+    padding: field === 'branch' ? '11px 12px 11px 40px' : '11px 12px',
+    width: '100%',
+    outline: 'none',
+    appearance: 'none',
+    cursor: 'pointer',
     transition: 'all 0.15s ease',
     fontFamily: 'Inter, sans-serif',
   })
@@ -121,13 +164,13 @@ const Login = () => {
           }}
         >
           <h1 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--foreground)', marginBottom: '6px', letterSpacing: '-0.02em' }}>
-            Welcome back
+            Create your account
           </h1>
           <p style={{ fontSize: '14px', color: 'var(--foreground-subtle)', marginBottom: '28px' }}>
-            Sign in to continue your learning journey
+            Your AI-powered academic OS awaits
           </p>
 
-          {/* Error box */}
+          {/* Global error */}
           {error && (
             <div
               style={{
@@ -144,15 +187,38 @@ const Login = () => {
 
           <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
+            {/* Full Name */}
+            <div>
+              <label htmlFor="name" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '8px' }}>Full name</label>
+              <div className="relative">
+                <User size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--foreground-subtle)' }} />
+                <input
+                  type="text"
+                  name="name"
+                  id="name"
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="Arjun Kumar"
+                  className="login-input"
+                  style={inputStyle('name')}
+                  onFocus={(e) => { e.target.style.borderColor = 'var(--primary)' }}
+                  onBlur={(e)  => { e.target.style.borderColor = fieldErrors.name ? 'var(--destructive)' : 'var(--border)' }}
+                />
+              </div>
+              {fieldErrors.name && (
+                <p className="text-xs mt-1.5" style={{ color: 'var(--destructive)' }}>{fieldErrors.name}</p>
+              )}
+            </div>
+
             {/* Email */}
             <div>
-              <label htmlFor="email" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '8px' }}>
-                Email address
-              </label>
+              <label htmlFor="email" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '8px' }}>Email address</label>
               <div className="relative">
                 <Mail size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--foreground-subtle)' }} />
                 <input
-                  type="email" name="email" id="email"
+                  type="email"
+                  name="email"
+                  id="email"
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="you@example.com"
@@ -170,20 +236,17 @@ const Login = () => {
 
             {/* Password */}
             <div>
-              <div className="flex items-center justify-between" style={{ marginBottom: '8px' }}>
-                <label htmlFor="password" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', margin: 0 }}>Password</label>
-                <Link to="/forgot-password" style={{ fontSize: '12px', color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>
-                  Forgot password?
-                </Link>
-              </div>
+              <label htmlFor="password" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '8px' }}>Password</label>
               <div className="relative">
                 <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--foreground-subtle)' }} />
                 <input
-                  type={showPassword ? 'text' : 'password'} name="password" id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  name="password"
+                  id="password"
                   value={formData.password}
                   onChange={handleChange}
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   className="login-input"
                   style={{ ...inputStyle('password'), paddingRight: '44px' }}
                   onFocus={(e) => { e.target.style.borderColor = 'var(--primary)' }}
@@ -194,8 +257,14 @@ const Login = () => {
                   onClick={() => setShowPassword((p) => !p)}
                   className="absolute right-1 top-1/2 -translate-y-1/2"
                   style={{
-                    color: 'var(--foreground-subtle)', background: 'none', border: 'none',
-                    width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'var(--foreground-subtle)',
+                    background: 'none',
+                    border: 'none',
+                    width: '40px',
+                    height: '40px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     cursor: 'pointer',
                   }}
                   aria-label="Toggle password visibility"
@@ -208,7 +277,62 @@ const Login = () => {
               )}
             </div>
 
-            {/* Submit Button */}
+            {/* Branch + Year — 2 column row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              {/* Branch */}
+              <div>
+                <label htmlFor="branch" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '8px' }}>Branch</label>
+                <div className="relative">
+                  <GraduationCap size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--foreground-subtle)' }} />
+                  <select
+                    name="branch"
+                    id="branch"
+                    value={formData.branch}
+                    onChange={handleChange}
+                    className="login-input"
+                    style={selectStyle('branch')}
+                    onFocus={(e) => { e.target.style.borderColor = 'var(--primary)' }}
+                    onBlur={(e)  => { e.target.style.borderColor = fieldErrors.branch ? 'var(--destructive)' : 'var(--border)' }}
+                  >
+                    <option value="" disabled>Branch</option>
+                    {BRANCHES.map((b) => (
+                      <option key={b} value={b} style={{ background: 'var(--background-card)', color: 'var(--foreground)' }}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+                {fieldErrors.branch && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--destructive)' }}>{fieldErrors.branch}</p>
+                )}
+              </div>
+
+              {/* Year */}
+              <div>
+                <label htmlFor="year" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--foreground-muted)', marginBottom: '8px' }}>Year</label>
+                <div className="relative">
+                  <select
+                    name="year"
+                    id="year"
+                    value={formData.year}
+                    onChange={handleChange}
+                    className="login-input"
+                    style={selectStyle('year')}
+                    onFocus={(e) => { e.target.style.borderColor = 'var(--primary)' }}
+                    onBlur={(e)  => { e.target.style.borderColor = fieldErrors.year ? 'var(--destructive)' : 'var(--border)' }}
+                  >
+                    <option value="" disabled>Year</option>
+                    {YEARS.map((y) => (
+                      <option key={y} value={y} style={{ background: 'var(--background-card)', color: 'var(--foreground)' }}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+                {fieldErrors.year && (
+                  <p className="text-xs mt-1.5" style={{ color: 'var(--destructive)' }}>{fieldErrors.year}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Submit */}
             <button
               type="submit"
               disabled={isLoading}
@@ -219,9 +343,9 @@ const Login = () => {
               }}
             >
               {isLoading ? (
-                <><Loader2 size={16} className="animate-spin" /> Signing in...</>
+                <><Loader2 size={16} className="animate-spin" /> Creating account...</>
               ) : (
-                <>Sign in <ArrowRight size={16} /></>
+                'Create account'
               )}
             </button>
           </form>
@@ -233,10 +357,10 @@ const Login = () => {
             <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
           </div>
 
-          {/* Google OAuth Button */}
+          {/* Google OAuth placeholder */}
           <button
             type="button"
-            onClick={handleGoogleLogin}
+            onClick={handleGoogleSignup}
             className="btn-ghost w-full justify-center social-btn touch-target"
             style={{
               height: '46px', borderRadius: '12px', background: 'transparent',
@@ -254,16 +378,32 @@ const Login = () => {
             Continue with Google
           </button>
 
-          <p className="text-center text-xs mt-6" style={{ color: 'var(--foreground-subtle)', fontWeight: 500 }}>
-            Don't have an account?{' '}
-            <Link to="/signup" style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 600 }}>
-              Create one free
+          {/* Already have an account button */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px' }}>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+              <span className="text-xs" style={{ color: 'var(--foreground-subtle)', fontWeight: 500 }}>Already have an account?</span>
+              <div className="flex-1 h-px" style={{ background: 'var(--border)' }} />
+            </div>
+            <Link
+              to="/login"
+              className="btn-ghost w-full justify-center touch-target"
+              style={{
+                height: '46px', borderRadius: '12px', background: 'transparent',
+                borderColor: 'var(--border)', color: 'var(--foreground)',
+                fontSize: '14px', display: 'flex', alignItems: 'center',
+                textDecoration: 'none', transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--background-hover)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'transparent' }}
+            >
+              Sign in
             </Link>
-          </p>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-export default Login
+export default Signup

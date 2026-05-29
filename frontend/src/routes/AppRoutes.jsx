@@ -8,6 +8,7 @@ import DashboardLayout from '../layouts/DashboardLayout'
 // Auth pages — not lazy (load immediately)
 import Login from '../pages/Login'
 import Signup from '../pages/Signup'
+import ForgotPassword from '../pages/ForgotPassword'
 
 // App pages — lazy loaded
 const Dashboard     = lazy(() => import('../pages/Dashboard'))
@@ -19,6 +20,9 @@ const Recommendations = lazy(() => import('../pages/Recommendations'))
 const Planner       = lazy(() => import('../pages/Planner'))
 const Analytics     = lazy(() => import('../pages/Analytics'))
 const NotFound      = lazy(() => import('../pages/NotFound'))
+const Profile       = lazy(() => import('../pages/Profile'))
+const Settings      = lazy(() => import('../pages/Settings'))
+
 
 // Simple loading fallback
 const Loader = () => (
@@ -39,6 +43,7 @@ const AppRoutes = () => {
         <Route element={<PublicRoute />}>
           <Route path="/login"  element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
         </Route>
 
         {/* Protected routes — redirect to login if not authenticated */}
@@ -52,6 +57,9 @@ const AppRoutes = () => {
             <Route path="/app/recommendations"  element={<Recommendations />} />
             <Route path="/app/planner"          element={<Planner />} />
             <Route path="/app/productivity"     element={<Analytics />} />
+            <Route path="/app/profile"          element={<Profile />} />
+            <Route path="/app/settings"         element={<Settings />} />
+            
           </Route>
         </Route>
 
