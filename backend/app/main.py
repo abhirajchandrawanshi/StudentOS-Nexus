@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +11,25 @@ from app.rag.chunker import chunk_text
 from app.rag.embedder import create_embeddings
 from app.rag.vectordb import store_chunks
 from app.dsa.routes import router as dsa_router
+from app.resume.routes import router as resume_router
+from app.resume.repository import init_db
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Initialise resume DB tables on startup (no-op if DATABASE_URL not set)
+    await init_db()
+    yield
+
+app = FastAPI(
+    title="StudentOS Nexus API",
+    description="AI-powered student career platform backend",
+    version="1.0.0",
+    lifespan=lifespan,
+)
 
 # Include DSA Router
-app.include_router(dsa_router, prefix="/dsa", tags=["DSA"])
+app.include_router(dsa_router,    prefix="/dsa",    tags=["DSA"])
+app.include_router(resume_router, prefix="/resume", tags=["Resume"])
 
 # ─── CORS — allow frontend to call this API ────────────────────────
 app.add_middleware(

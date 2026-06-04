@@ -1,0 +1,26 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+pypdf==4.0.1
+chromadb==0.4.24
+sentence-transformers==2.2.2
+langchain==0.1.0
+langchain-text-splitters==0.0.1
+google-generativeai==0.3.0
+httpx==0.25.2
+openpyxl==3.1.5
+
+# ── Resume Analysis Module ─────────────────────────────────────────────
+sqlalchemy==2.0.50
+# asyncpg==0.29.0  # Requires Microsoft Visual C++ Build Tools on Windows
+# Alternative (Windows-friendly pre-compiled wheels):
+# psycopg2-binary==2.9.9  # for sync driver
+# Install asyncpg only if you have C++ Build Tools: pip install asyncpg
+alembic==1.13.1
+pdfplumber==0.10.4
+spacy==3.7.4
+aiofiles==23.2.1
+python-multipart==0.0.9
+# After install, run: python -m spacy download en_core_web_sm
