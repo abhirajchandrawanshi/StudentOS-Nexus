@@ -5,7 +5,7 @@ import useUIStore from './store/uiStore'
 
 function App() {
   const { initTheme } = useUIStore()
-  useEffect(() => { initTheme() }, [])
+  useEffect(() => { initTheme() }, [initTheme])
   return (
     <BrowserRouter>
       <AppRoutes />

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useBreakpoint } from '../hooks/useIsMobile'
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -149,35 +150,41 @@ const ReadinessRing = ({ value = 74 }) => {
 
 // ── Problem Sheet ──────────────────────────────────────────────────
 const ProblemSheet = () => {
+  const bp = useBreakpoint()
+  const isMobile = bp === 'mobile'
+  const [problems,     setProblems]     = useState(PROBLEMS)
   const [topicFilter,  setTopicFilter]  = useState('All')
   const [diffFilter,   setDiffFilter]   = useState('All')
   const [activeId,     setActiveId]     = useState(null)
 
-  const filtered = PROBLEMS.filter(p => {
+  const filtered = problems.filter(p => {
     const topicOk = topicFilter === 'All' || p.topic === topicFilter
     const diffOk  = diffFilter  === 'All' || p.diff  === diffFilter
     return topicOk && diffOk
   })
 
-  const StatusIcon = ({ status }) => {
-    if (status === 'solved')    return <CheckCircle2 size={17} style={{ color:'#4ade80', flexShrink:0 }}/>
-    if (status === 'attempted') return <Play         size={15} style={{ color:'#7C3AED', flexShrink:0 }}/>
-    return <Circle size={17} style={{ color:'var(--foreground-subtle)', flexShrink:0 }}/>
-  }
+  const solved   = problems.filter(p => p.status === 'solved').length
+  const attempted= problems.filter(p => p.status === 'attempted').length
 
-  const solved   = PROBLEMS.filter(p => p.status === 'solved').length
-  const attempted= PROBLEMS.filter(p => p.status === 'attempted').length
+  const handleToggleProblemStatus = (id) => {
+    setProblems(prev => prev.map(p => {
+      if (p.id === id) {
+        return { ...p, status: p.status === 'solved' ? 'unsolved' : 'solved' }
+      }
+      return p
+    }))
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
 
       {/* Stats strip */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'12px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'12px' }}>
         {[
-          { label:'Total',     val: PROBLEMS.length, color:'var(--foreground)' },
+          { label:'Total',     val: problems.length, color:'var(--foreground)' },
           { label:'Solved',    val: solved,           color:'#4ade80' },
           { label:'Attempted', val: attempted,        color:'#7C3AED' },
-          { label:'Unsolved',  val: PROBLEMS.length - solved - attempted, color:'var(--foreground-muted)' },
+          { label:'Unsolved',  val: problems.length - solved - attempted, color:'var(--foreground-muted)' },
         ].map(({ label, val, color }) => (
           <div key={label} style={{
             background:'var(--background-card)', border:'1px solid var(--border)',
@@ -193,13 +200,13 @@ const ProblemSheet = () => {
       <div style={{
         background:'var(--background-card)', border:'1px solid var(--border)',
         borderRadius:'14px', padding:'14px 16px',
-        display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'10px',
+        display:'flex', alignItems:'center', justifyContent: 'space-between', flexWrap:'wrap', gap:'10px',
       }}>
         {/* Topic pills */}
         <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
           {TOPIC_FILTERS.map(f => (
-            <button key={f} onClick={() => setTopicFilter(f)} style={{
-              padding:'5px 14px', borderRadius:'20px', border:'1px solid',
+            <button key={f} onClick={() => setTopicFilter(f)} aria-pressed={topicFilter === f} style={{
+              padding:'8px 16px', borderRadius:'20px', border:'1px solid',
               fontSize:'12px', fontWeight:500, cursor:'pointer', transition:'all 0.12s',
               background: topicFilter === f ? 'var(--primary)' : 'transparent',
               color:       topicFilter === f ? '#fff' : 'var(--foreground-muted)',
@@ -213,8 +220,8 @@ const ProblemSheet = () => {
         <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
           <Filter size={13} style={{ color:'var(--foreground-muted)' }}/>
           {['All','Easy','Medium','Hard'].map(d => (
-            <button key={d} onClick={() => setDiffFilter(d)} style={{
-              padding:'5px 12px', borderRadius:'20px', border:'1px solid',
+            <button key={d} onClick={() => setDiffFilter(d)} aria-pressed={diffFilter === d} style={{
+              padding:'8px 16px', borderRadius:'20px', border:'1px solid',
               fontSize:'12px', fontWeight:500, cursor:'pointer', transition:'all 0.12s',
               background: diffFilter === d ? (d === 'Easy' ? 'rgba(74,222,128,0.15)' : d === 'Medium' ? 'rgba(251,191,36,0.15)' : d === 'Hard' ? 'rgba(248,113,113,0.15)' : 'var(--primary)') : 'transparent',
               color:       diffFilter === d ? (d === 'Easy' ? '#4ade80' : d === 'Medium' ? '#fbbf24' : d === 'Hard' ? '#f87171' : '#fff') : 'var(--foreground-muted)',
@@ -232,48 +239,96 @@ const ProblemSheet = () => {
           const isActive = activeId === p.id
           const diffColor = DIFF_STYLE[p.diff]?.color || 'var(--foreground-muted)'
           return (
-            <div
-              key={p.id}
-              onClick={() => setActiveId(isActive ? null : p.id)}
-              style={{
-                display:'flex', alignItems:'center', gap:'14px',
-                padding:'16px 20px', cursor:'pointer', transition:'background 0.12s',
-                background: isActive ? 'rgba(124,58,237,0.1)' : 'transparent',
-                borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none',
-                borderLeft: isActive ? '3px solid var(--primary)' : '3px solid transparent',
-              }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--background-hover)' }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
-            >
-              {/* Status icon */}
-              <div style={{ width:'20px', display:'flex', justifyContent:'center' }}>
-                {p.status === 'solved'
-                  ? <CheckCircle2 size={17} style={{ color:'#4ade80', flexShrink:0 }}/>
-                  : p.status === 'attempted'
-                    ? <Play size={14} style={{ color:'#7C3AED', flexShrink:0 }}/>
-                    : <Circle size={17} style={{ color:'var(--foreground-subtle)', flexShrink:0 }}/>
-                }
-              </div>
-
-              {/* Title + meta */}
-              <div style={{ flex:1, minWidth:0 }}>
-                <p style={{ fontSize:'14px', fontWeight:600, color: isActive ? 'var(--foreground)' : 'var(--foreground)', marginBottom:'4px', lineHeight:1.3 }}>
-                  {p.title}
-                </p>
-                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                  <span style={{ fontSize:'12px', fontWeight:600, color: diffColor }}>{p.diff}</span>
-                  <span style={{ fontSize:'12px', color:'var(--foreground-subtle)' }}>•</span>
-                  <span style={{ fontSize:'12px', color:'var(--foreground-muted)' }}>{p.topic}</span>
-                  <span style={{ fontSize:'12px', color:'var(--foreground-subtle)' }}>•</span>
-                  <span style={{ fontSize:'12px', color:'var(--foreground-muted)' }}>{p.acceptance}% acceptance</span>
+            <div key={p.id} style={{ borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none' }}>
+              <div
+                onClick={() => setActiveId(isActive ? null : p.id)}
+                style={{
+                  display:'flex', alignItems:'center', gap:'14px',
+                  padding:'16px 20px', cursor:'pointer', transition:'background 0.12s',
+                  background: isActive ? 'rgba(124,58,237,0.1)' : 'transparent',
+                  borderLeft: isActive ? '3px solid var(--primary)' : '3px solid transparent',
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--background-hover)' }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+              >
+                {/* Status icon */}
+                <div style={{ width:'20px', display:'flex', justifyContent:'center' }}>
+                  {p.status === 'solved'
+                    ? <CheckCircle2 size={17} style={{ color:'#4ade80', flexShrink:0 }}/>
+                    : p.status === 'attempted'
+                      ? <Play size={14} style={{ color:'#7C3AED', flexShrink:0 }}/>
+                      : <Circle size={17} style={{ color:'var(--foreground-subtle)', flexShrink:0 }}/>
+                  }
                 </div>
+
+                {/* Title + meta */}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <p style={{ fontSize:'14px', fontWeight:600, color: isActive ? 'var(--primary)' : 'var(--foreground)', marginBottom:'4px', lineHeight:1.3 }}>
+                    {p.title}
+                  </p>
+                  <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+                    <span style={{ fontSize:'12px', fontWeight:600, color: diffColor }}>{p.diff}</span>
+                    <span style={{ fontSize:'12px', color:'var(--foreground-subtle)' }}>•</span>
+                    <span style={{ fontSize:'12px', color:'var(--foreground-muted)' }}>{p.topic}</span>
+                    <span style={{ fontSize:'12px', color:'var(--foreground-subtle)' }}>•</span>
+                    <span style={{ fontSize:'12px', color:'var(--foreground-muted)' }}>{p.acceptance}% acceptance</span>
+                  </div>
+                </div>
+
+                {/* Problem number */}
+                <span style={{ fontSize:'12px', color:'var(--foreground-subtle)', flexShrink:0 }}>#{p.id}</span>
+
+                {/* Chevron */}
+                {isActive ? (
+                  <ChevronDown size={16} style={{ color: 'var(--primary)', flexShrink:0 }}/>
+                ) : (
+                  <ChevronRight size={16} style={{ color: 'var(--foreground-subtle)', flexShrink:0 }}/>
+                )}
               </div>
 
-              {/* Problem number */}
-              <span style={{ fontSize:'12px', color:'var(--foreground-subtle)', flexShrink:0 }}>#{p.id}</span>
-
-              {/* Chevron */}
-              <ChevronRight size={16} style={{ color: isActive ? 'var(--primary)' : 'var(--foreground-subtle)', flexShrink:0, transition:'color 0.12s' }}/>
+              {/* Expanded details */}
+              {isActive && (
+                <div style={{
+                  padding: '12px 20px 20px 54px',
+                  background: 'rgba(124,58,237,0.03)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                }}>
+                  <p style={{ fontSize: '13px', color: 'var(--foreground-muted)', lineHeight: 1.5, margin: 0 }}>
+                    <strong>AI Practice Strategy:</strong> Focus on optimizing space complexity. Start with a brute-force approach, then refine it using the optimal patterns. Common follow-up questions include handling streaming data.
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleToggleProblemStatus(p.id) }}
+                      style={{
+                        padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border)',
+                        background: 'var(--background-card)', color: 'var(--foreground)',
+                        fontSize: '12px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.12s'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.background = 'var(--background-hover)' }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--background-card)' }}
+                    >
+                      {p.status === 'solved' ? 'Mark Unsolved' : 'Mark Solved'}
+                    </button>
+                    <a
+                      href={`https://leetcode.com/problems/${p.title.toLowerCase().replace(/ /g, '-')}/`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--primary)',
+                        background: 'var(--primary)', color: '#fff', textDecoration: 'none',
+                        fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#6d28d9'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'var(--primary)'}
+                    >
+                      Solve on LeetCode <ExternalLink size={12}/>
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
@@ -281,7 +336,7 @@ const ProblemSheet = () => {
 
       {/* Footer count */}
       <p style={{ fontSize:'13px', color:'var(--foreground-muted)', textAlign:'center' }}>
-        Showing {filtered.length} of {PROBLEMS.length} problems
+        Showing {filtered.length} of {problems.length} problems
       </p>
     </div>
   )
@@ -289,6 +344,9 @@ const ProblemSheet = () => {
 
 // ── Analytics Tab ──────────────────────────────────────────────────
 const AnalyticsTab = () => {
+  const bp = useBreakpoint()
+  const isMobile = bp === 'mobile'
+  const isTablet = bp === 'tablet'
   const [filter, setFilter] = useState('All')
   const [sort,   setSort]   = useState('Weakest')
 
@@ -301,7 +359,7 @@ const AnalyticsTab = () => {
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       {/* Stat cards */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'16px' }}>
         {[
           { icon:Trophy,    iconColor:'#fbbf24', bg:'rgba(251,191,36,0.1)',  label:'Total Solved',    value:STATS.totalSolved,                          sub:`Easy ${STATS.easy} · Med ${STATS.medium} · Hard ${STATS.hard}` },
           { icon:Flame,     iconColor:'#f97316', bg:'rgba(249,115,22,0.1)',  label:'Current Streak',  value:`${STATS.streak}d`,                          sub:'Keep it going!' },
@@ -322,7 +380,7 @@ const AnalyticsTab = () => {
       </div>
 
       {/* Middle row */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'16px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr' : '1fr 1fr 1fr', gap:'16px' }}>
         {/* Difficulty + Bar */}
         <div style={{ ...card, padding:'22px' }}>
           <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'18px' }}>Difficulty breakdown</p>
@@ -396,16 +454,23 @@ const AnalyticsTab = () => {
       </div>
 
       {/* Bottom row */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:'16px' }}>
         {/* Topics table */}
         <div style={{ ...card, padding:'22px' }}>
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
+          <div style={{
+            display:'flex',
+            flexDirection: isMobile ? 'column' : 'row',
+            alignItems: isMobile ? 'flex-start' : 'center',
+            justifyContent:'space-between',
+            gap: isMobile ? '12px' : '16px',
+            marginBottom:'16px'
+          }}>
             <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)' }}>All topics</p>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap', width: isMobile ? '100%' : 'auto' }}>
               <div style={{ display:'flex', gap:'4px', background:'var(--background)', padding:'3px', borderRadius:'8px', border:'1px solid var(--border)' }}>
                 {['All','Easy','Medium','Hard'].map(f => (
                   <button key={f} onClick={() => setFilter(f)} style={{
-                    padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                    padding:'6px 12px', borderRadius:'6px', border:'none', cursor:'pointer',
                     fontSize:'12px', fontWeight:500, transition:'all 0.12s',
                     background: filter === f ? 'var(--primary)' : 'transparent',
                     color: filter === f ? '#fff' : 'var(--foreground-muted)',
@@ -491,14 +556,16 @@ const AnalyticsTab = () => {
 // ── Main DSA Page ──────────────────────────────────────────────────
 const DSA = () => {
   const [activeTab, setActiveTab] = useState('analytics')
+  const bp = useBreakpoint()
+  const isMobile = bp === 'mobile'
 
   return (
-    <div style={{ maxWidth:'1600px', margin:'0 auto', display:'flex', flexDirection:'column', gap:'20px' }}>
+    <div className="fade-up" style={{ maxWidth:'1600px', margin:'0 auto', display:'flex', flexDirection:'column', gap:'20px' }}>
 
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between' }}>
+      <div style={{ display:'flex', alignItems: isMobile ? 'stretch' : 'flex-start', justifyContent:'space-between', flexDirection: isMobile ? 'column' : 'row', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize:'26px', fontWeight:700, color:'var(--foreground)', marginBottom:'4px', letterSpacing:'-0.02em' }}>
+          <h1 style={{ fontSize: isMobile ? '20px' : '26px', fontWeight:700, color:'var(--foreground)', marginBottom:'4px', letterSpacing:'-0.02em' }}>
             DSA Intelligence Engine
           </h1>
           <p style={{ fontSize:'14px', color:'var(--foreground-muted)' }}>
@@ -520,7 +587,7 @@ const DSA = () => {
       </div>
 
       {/* Tab switcher */}
-      <div style={{
+      <div role="tablist" style={{
         display:'flex', gap:'4px', background:'var(--background-card)',
         border:'1px solid var(--border)', borderRadius:'14px',
         padding:'5px', width:'fit-content',
@@ -529,7 +596,7 @@ const DSA = () => {
           { id:'analytics', icon:BarChartIcon, label:'Analytics' },
           { id:'problems',  icon:LayoutList,   label:'Problem Sheet' },
         ].map(({ id, icon:Icon, label }) => (
-          <button key={id} onClick={() => setActiveTab(id)} style={{
+          <button key={id} onClick={() => setActiveTab(id)} role="tab" aria-selected={activeTab === id} style={{
             display:'flex', alignItems:'center', gap:'8px',
             padding:'9px 20px', borderRadius:'10px', border:'none', cursor:'pointer',
             fontSize:'13px', fontWeight:600, transition:'all 0.15s',

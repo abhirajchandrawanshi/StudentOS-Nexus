@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useBreakpoint } from '../hooks/useIsMobile'
 import {
   AreaChart, Area, PieChart, Pie, Cell,
   RadialBarChart, RadialBar, ResponsiveContainer, Tooltip,
@@ -73,6 +75,8 @@ const ChartTip = ({ active, payload, label }) => {
 
 // ── Main ───────────────────────────────────────────────────────────
 const Dashboard = () => {
+  const bp = useBreakpoint(); const isMobile = bp === 'mobile'; const isTablet = bp === 'tablet';
+  const navigate = useNavigate()
   const { user } = useAuthStore()
   const name = user?.name?.split(' ')[0] || 'Alex'
   const [goals, setGoals] = useState(INIT_GOALS)
@@ -87,21 +91,21 @@ const Dashboard = () => {
   }
 
   return (
-    <div style={{ maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+    <div className="fade-up" style={{ maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
       {/* ══ HERO SECTION ══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr 280px' : '1fr 340px', gap: '24px' }}>
 
         {/* Left hero */}
-        <div style={{ ...card, padding: '32px', position: 'relative', overflow: 'hidden' }}>
+        <div style={{ ...card, padding: isMobile ? '16px' : '32px', position: 'relative', overflow: 'hidden' }}>
           {/* glows */}
           <div style={{ position:'absolute', top:0, right:0, width:'320px', height:'320px', background:'rgba(124,58,237,0.07)', filter:'blur(80px)', borderRadius:'50%', pointerEvents:'none' }}/>
           <div style={{ position:'absolute', bottom:0, left:0, width:'240px', height:'240px', background:'rgba(236,72,153,0.05)', filter:'blur(80px)', borderRadius:'50%', pointerEvents:'none' }}/>
 
           {/* Header */}
-          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'32px', position:'relative' }}>
+          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom: isMobile ? '16px' : '32px', position:'relative' }}>
             <div>
-              <h2 style={{ fontSize:'26px', fontWeight:700, color:'var(--foreground)', marginBottom:'6px', letterSpacing:'-0.02em' }}>
+              <h2 style={{ fontSize: isMobile ? '20px' : '26px', fontWeight:700, color:'var(--foreground)', marginBottom:'6px', letterSpacing:'-0.02em' }}>
                 Welcome back, {name}
               </h2>
               <p style={{ fontSize:'15px', color:'var(--foreground-muted)' }}>
@@ -121,14 +125,14 @@ const Dashboard = () => {
           </div>
 
           {/* 4 stat mini-cards */}
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'16px', marginBottom:'28px', position:'relative' }}>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'16px', marginBottom:'28px', position:'relative' }}>
             {[
               { icon:Zap,        iconColor:'#7C3AED', bg:'rgba(124,58,237,0.1)', val:'87%', label:'Focus Score' },
               { icon:Target,     iconColor:'#EC4899', bg:'rgba(236,72,153,0.1)', val:'24',  label:'DSA Solved' },
               { icon:Award,      iconColor:'#06B6D4', bg:'rgba(6,182,212,0.1)',  val:'92%', label:'Placement Ready' },
               { icon:TrendingUp, iconColor:'#22C55E', bg:'rgba(34,197,94,0.1)',  val:'37h', label:'This Week' },
-            ].map(({ icon:Icon, iconColor, bg, val, label }) => (
-              <div key={label} style={{
+            ].map(({ icon:Icon, iconColor, bg, val, label }, idx) => (
+              <div key={label} className={`stagger-${idx + 1}`} style={{
                 background:'rgba(255,255,255,0.03)',
                 border:'1px solid var(--border)',
                 borderRadius:'14px',
@@ -137,7 +141,7 @@ const Dashboard = () => {
                 <div style={{ width:'36px', height:'36px', borderRadius:'10px', background:bg, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:'14px' }}>
                   <Icon size={18} style={{ color:iconColor }} />
                 </div>
-                <p style={{ fontSize:'28px', fontWeight:700, color:'var(--foreground)', marginBottom:'4px', letterSpacing:'-0.02em', lineHeight:1 }}>
+                <p style={{ fontSize: isMobile ? '22px' : '28px', fontWeight:700, color:'var(--foreground)', marginBottom:'4px', letterSpacing:'-0.02em', lineHeight:1 }}>
                   {val}
                 </p>
                 <p style={{ fontSize:'12px', color:'var(--foreground-muted)' }}>{label}</p>
@@ -152,6 +156,8 @@ const Dashboard = () => {
             borderRadius:'14px',
             padding:'20px 24px',
             position:'relative',
+            minWidth: 0,
+            overflow: 'hidden',
           }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
               <span style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)' }}>Weekly Activity</span>
@@ -192,10 +198,10 @@ const Dashboard = () => {
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
               {[
-                { dot:'#7C3AED', title:'Revise DBMS tonight',   sub:'Based on your exam schedule' },
-                { dot:'#EC4899', title:'Solve 2 DP problems',   sub:'To maintain your streak' },
-              ].map(({ dot, title, sub }) => (
-                <div key={title} style={{
+                { dot:'#7C3AED', title:'Revise DBMS tonight',   sub:'Based on your exam schedule', path:'/app/notes' },
+                { dot:'#EC4899', title:'Solve 2 DP problems',   sub:'To maintain your streak', path:'/app/dsa' },
+              ].map(({ dot, title, sub, path }) => (
+                <div key={title} onClick={() => navigate(path)} style={{
                   padding:'14px 16px', borderRadius:'12px', cursor:'pointer',
                   background:'rgba(255,255,255,0.03)',
                   border:'1px solid var(--border)',
@@ -235,8 +241,12 @@ const Dashboard = () => {
           <div style={{ ...card, padding:'24px' }}>
             <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'14px' }}>Quick Actions</p>
             <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
-              {['Start AI Interview','Analyze Resume','Generate Roadmap'].map(label => (
-                <button key={label} style={{
+              {[
+                { label: 'Start AI Interview', path: '/app/interviewer' },
+                { label: 'Analyze Resume',     path: '/app/resume' },
+                { label: 'Generate Roadmap',   path: '/app/recommendations' },
+              ].map(({ label, path }) => (
+                <button key={label} onClick={() => navigate(path)} style={{
                   width:'100%', padding:'12px 16px', borderRadius:'12px', textAlign:'left',
                   background:'rgba(255,255,255,0.03)',
                   border:'1px solid var(--border)',
@@ -257,10 +267,10 @@ const Dashboard = () => {
       </div>
 
       {/* ══ WIDGETS ROW ══ */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'24px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'24px' }}>
 
         {/* DSA Progress */}
-        <div style={{ ...card, padding:'24px' }}>
+        <div style={{ ...card, padding:'24px', minWidth: 0, overflow: 'hidden' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'20px' }}>
             <div style={{ width:'42px', height:'42px', borderRadius:'12px', background:'rgba(124,58,237,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Code2 size={20} style={{ color:'var(--primary)' }}/>
@@ -279,7 +289,7 @@ const Dashboard = () => {
               </PieChart>
             </ResponsiveContainer>
             <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-              <p style={{ fontSize:'32px', fontWeight:700, color:'var(--foreground)', lineHeight:1 }}>68%</p>
+              <p style={{ fontSize: isMobile ? '26px' : '32px', fontWeight:700, color:'var(--foreground)', lineHeight:1 }}>68%</p>
               <p style={{ fontSize:'12px', color:'var(--foreground-muted)', marginTop:'4px' }}>Complete</p>
             </div>
           </div>
@@ -316,7 +326,7 @@ const Dashboard = () => {
         </div>
 
         {/* Focus Time */}
-        <div style={{ ...card, padding:'24px' }}>
+        <div style={{ ...card, padding:'24px', minWidth: 0, overflow: 'hidden' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'20px' }}>
             <div style={{ width:'42px', height:'42px', borderRadius:'12px', background:'rgba(6,182,212,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
               <Brain size={20} style={{ color:'var(--accent)' }}/>
@@ -334,7 +344,7 @@ const Dashboard = () => {
               </RadialBarChart>
             </ResponsiveContainer>
             <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-              <p style={{ fontSize:'32px', fontWeight:700, color:'var(--foreground)', lineHeight:1 }}>87%</p>
+              <p style={{ fontSize: isMobile ? '26px' : '32px', fontWeight:700, color:'var(--foreground)', lineHeight:1 }}>87%</p>
               <p style={{ fontSize:'12px', color:'var(--foreground-muted)', marginTop:'4px' }}>Score</p>
             </div>
           </div>
@@ -359,7 +369,7 @@ const Dashboard = () => {
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
             {goals.map(goal => (
-              <button key={goal.id} onClick={() => toggleGoal(goal.id)} style={{
+              <button key={goal.id} onClick={() => toggleGoal(goal.id)} role="checkbox" aria-checked={goal.done} style={{
                 display:'flex', alignItems:'center', gap:'12px',
                 padding:'12px 14px', borderRadius:'12px',
                 background:'rgba(255,255,255,0.03)',
@@ -388,10 +398,10 @@ const Dashboard = () => {
       </div>
 
       {/* ══ BOTTOM ROW ══ */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'24px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:'24px' }}>
 
         {/* Interview Readiness */}
-        <div style={{ ...card, padding:'28px' }}>
+        <div style={{ ...card, padding: isMobile ? '16px' : '28px' }}>
           <p style={{ fontSize:'17px', fontWeight:600, color:'var(--foreground)', marginBottom:'24px' }}>
             Interview Readiness
           </p>
@@ -411,7 +421,7 @@ const Dashboard = () => {
         </div>
 
         {/* Recent Activity */}
-        <div style={{ ...card, padding:'28px' }}>
+        <div style={{ ...card, padding: isMobile ? '16px' : '28px' }}>
           <p style={{ fontSize:'17px', fontWeight:600, color:'var(--foreground)', marginBottom:'24px' }}>
             Recent Activity
           </p>

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Menu, Search, Bell, Sun, Moon,
-  User, Settings, LogOut, ChevronDown, Flame,
+  User, Settings, LogOut, Flame,
 } from 'lucide-react'
 import useAuthStore from '../../store/authStore'
 import useUIStore from '../../store/uiStore'
@@ -14,7 +14,7 @@ const NOTIFS = [
   { id: 3, text: 'Resume analysis complete',            time: '3h ago', unread: false },
 ]
 
-const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
+const Navbar = ({ onToggleSidebar, sidebarCollapsed, isMobile }) => {
   const navigate = useNavigate()
   const { user, logout }       = useAuthStore()
   const { theme, toggleTheme } = useUIStore()
@@ -22,12 +22,13 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
   const [notifOpen,     setNotifOpen]     = useState(false)
   const [userOpen,      setUserOpen]      = useState(false)
   const [searchFocused, setSearchFocused] = useState(false)
+  const [notifs,        setNotifs]        = useState(NOTIFS)
 
   const notifRef = useRef(null)
   const userRef  = useRef(null)
 
   const initials = user?.name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
-  const unread   = NOTIFS.filter(n => n.unread).length
+  const unread   = notifs.filter(n => n.unread).length
 
   useEffect(() => {
     const fn = e => {
@@ -38,10 +39,21 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
     return () => document.removeEventListener('mousedown', fn)
   }, [])
 
-  const handleLogout = async () => {
-    await authService.logout()
+  const handleLogout = () => {
+    authService.logout()
     logout()
     navigate('/login')
+  }
+
+  const handleNotifClick = (n) => {
+    setNotifs(prev => prev.map(notif => notif.id === n.id ? { ...notif, unread: false } : notif))
+    setNotifOpen(false)
+    if (n.id === 1) navigate('/app/dsa')
+    if (n.id === 3) navigate('/app/resume')
+  }
+
+  const handleMarkAllRead = () => {
+    setNotifs(prev => prev.map(notif => ({ ...notif, unread: false })))
   }
 
   const dropdown = {
@@ -63,24 +75,25 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
   })
 
   return (
-    <header
-      style={{
-        height: '56px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        padding: '0 20px',
-        background: 'var(--background)',
-        borderBottom: '1px solid var(--border)',
-        flexShrink: 0,
-        zIndex: 20,
-      }}
-    >
-      {/* ── Hamburger — left side ── */}
+    <header style={{
+      height:       '56px',
+      display:      'flex',
+      alignItems:   'center',
+      gap:          isMobile ? '8px' : '12px',
+      padding:      isMobile ? '0 12px' : '0 20px',
+      position:     'relative',
+      background:   'var(--background)',
+      borderBottom: '1px solid var(--border)',
+      flexShrink:   0,
+      zIndex:       20,
+    }}>
+
+      {/* ── Hamburger ── */}
       <button
+        type="button"
         onClick={onToggleSidebar}
         style={iconBtn()}
-        title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        aria-label={isMobile ? (sidebarCollapsed ? 'Open navigation menu' : 'Close navigation menu') : (sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')}
         onMouseEnter={e => { e.currentTarget.style.background = 'var(--background-hover)'; e.currentTarget.style.color = 'var(--foreground)' }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--foreground-muted)' }}
       >
@@ -88,29 +101,28 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
       </button>
 
       {/* ── Search bar ── */}
-      <div
-        style={{
-          flex: 1,
-          maxWidth: '520px',
-          height: '38px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '0 14px',
-          borderRadius: '10px',
-          background: 'var(--background-card)',
-          border: `1px solid ${searchFocused ? 'rgba(124,58,237,0.6)' : 'var(--border)'}`,
-          boxShadow: searchFocused ? '0 0 0 3px rgba(124,58,237,0.12)' : 'none',
-          transition: 'all 0.15s',
-          cursor: 'text',
-        }}
-      >
+      <div style={{
+        flex:         1,
+        maxWidth:     isMobile ? '100%' : '520px',
+        height:       '38px',
+        display:      'flex',
+        alignItems:   'center',
+        gap:          '10px',
+        padding:      '0 14px',
+        borderRadius: '10px',
+        background:   'var(--background-card)',
+        border:       `1px solid ${searchFocused ? 'rgba(124,58,237,0.6)' : 'var(--border)'}`,
+        boxShadow:    searchFocused ? '0 0 0 3px rgba(124,58,237,0.12)' : 'none',
+        transition:   'all 0.15s',
+        cursor:       'text',
+      }}>
         <Search size={15} style={{ color: 'var(--foreground-muted)', flexShrink: 0 }} />
         <input
           type="text"
-          placeholder="Ask anything..."
+          placeholder={isMobile ? 'Search...' : 'Ask anything...'}
           onFocus={() => setSearchFocused(true)}
           onBlur={() => setSearchFocused(false)}
+          aria-label="Search"
           style={{
             flex: 1, background: 'transparent',
             border: 'none', outline: 'none',
@@ -118,44 +130,50 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
             fontFamily: 'inherit',
           }}
         />
-        {/* Ctrl K hint */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-          {['Ctrl','K'].map(k => (
-            <kbd key={k} style={{
-              padding: '2px 6px', borderRadius: '5px', fontSize: '11px',
-              fontFamily: 'monospace', color: 'var(--foreground-subtle)',
-              background: 'var(--muted)', border: '1px solid var(--border)',
-            }}>
-              {k}
-            </kbd>
-          ))}
-        </div>
+        {/* Ctrl+K — desktop only */}
+        {!isMobile && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+            {['Ctrl', 'K'].map(k => (
+              <kbd key={k} style={{
+                padding: '2px 6px', borderRadius: '5px', fontSize: '11px',
+                fontFamily: 'monospace', color: 'var(--foreground-subtle)',
+                background: 'var(--muted)', border: '1px solid var(--border)',
+              }}>
+                {k}
+              </kbd>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Spacer ── */}
-      <div style={{ flex: 1 }} />
+      {!isMobile && <div style={{ flex: 1 }} />}
 
       {/* ── Right actions ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '4px' : '6px' }}>
 
-        {/* Streak pill */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          padding: '6px 12px', borderRadius: '10px',
-          background: 'rgba(245,158,11,0.1)',
-          border: '1px solid rgba(245,158,11,0.25)',
-        }}>
-          <Flame size={14} style={{ color: '#F59E0B' }} />
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#F59E0B' }}>
-            12 day streak
-          </span>
-        </div>
+        {/* Streak pill — desktop only */}
+        {!isMobile && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '6px',
+            padding: '6px 12px', borderRadius: '10px',
+            background: 'rgba(245,158,11,0.1)',
+            border: '1px solid rgba(245,158,11,0.25)',
+          }}>
+            <Flame size={14} style={{ color: '#F59E0B' }} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: '#F59E0B' }}>
+              12 day streak
+            </span>
+          </div>
+        )}
 
         {/* Notifications */}
         <div style={{ position: 'relative' }} ref={notifRef}>
           <button
+            type="button"
             onClick={() => { setNotifOpen(p => !p); setUserOpen(false) }}
             style={{ ...iconBtn(), position: 'relative' }}
+            aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
             onMouseEnter={e => { e.currentTarget.style.background = 'var(--background-hover)'; e.currentTarget.style.color = 'var(--foreground)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--foreground-muted)' }}
           >
@@ -171,7 +189,12 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
           </button>
 
           {notifOpen && (
-            <div style={{ ...dropdown, width: '280px' }} className="fade-in">
+            <div style={{
+              ...dropdown,
+              width: isMobile ? 'calc(100vw - 32px)' : '280px',
+              right: isMobile ? '-60px' : 0,
+              maxWidth: '320px',
+            }} className="fade-in">
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
                 <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--foreground)' }}>Notifications</span>
                 {unread > 0 && (
@@ -180,14 +203,12 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
                   </span>
                 )}
               </div>
-              {NOTIFS.map(n => (
-                <div
-                  key={n.id}
-                  style={{
-                    padding: '12px 16px', cursor: 'pointer', transition: 'background 0.12s',
-                    background: n.unread ? 'rgba(124,58,237,0.05)' : 'transparent',
-                    borderBottom: '1px solid var(--border)',
-                  }}
+              {notifs.map(n => (
+                <div key={n.id} onClick={() => handleNotifClick(n)} style={{
+                  padding: '12px 16px', cursor: 'pointer', transition: 'background 0.12s',
+                  background: n.unread ? 'rgba(124,58,237,0.05)' : 'transparent',
+                  borderBottom: '1px solid var(--border)',
+                }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--background-hover)'}
                   onMouseLeave={e => e.currentTarget.style.background = n.unread ? 'rgba(124,58,237,0.05)' : 'transparent'}
                 >
@@ -196,8 +217,8 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
                 </div>
               ))}
               <div style={{ padding: '10px 16px' }}>
-                <button style={{ fontSize: '13px', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                  View all
+                <button type="button" onClick={handleMarkAllRead} style={{ fontSize: '13px', color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  Mark all as read
                 </button>
               </div>
             </div>
@@ -206,9 +227,10 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
 
         {/* Theme toggle */}
         <button
+          type="button"
           onClick={toggleTheme}
           style={iconBtn()}
-          title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           onMouseEnter={e => { e.currentTarget.style.background = 'var(--background-hover)'; e.currentTarget.style.color = 'var(--foreground)' }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--foreground-muted)' }}
         >
@@ -218,7 +240,9 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
         {/* User avatar */}
         <div style={{ position: 'relative' }} ref={userRef}>
           <button
+            type="button"
             onClick={() => { setUserOpen(p => !p); setNotifOpen(false) }}
+            aria-label="User menu"
             style={{
               display: 'flex', alignItems: 'center', gap: '8px',
               padding: '4px 8px 4px 4px', borderRadius: '10px',
@@ -239,7 +263,11 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
           </button>
 
           {userOpen && (
-            <div style={dropdown} className="fade-in">
+            <div style={{
+              ...dropdown,
+              right: 0,
+              maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
+            }} className="fade-in">
               <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
                 <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--foreground)', marginBottom: '2px' }}>
                   {user?.name || 'Student'}
@@ -253,8 +281,7 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
                   { icon: User,     label: 'Profile',  path: '/app/profile' },
                   { icon: Settings, label: 'Settings', path: '/app/settings' },
                 ].map(({ icon: Icon, label, path }) => (
-                  <button
-                    key={label}
+                  <button key={label} type="button"
                     onClick={() => { navigate(path); setUserOpen(false) }}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
@@ -270,8 +297,7 @@ const Navbar = ({ onToggleSidebar, sidebarCollapsed }) => {
                 ))}
               </div>
               <div style={{ padding: '6px', borderTop: '1px solid var(--border)' }}>
-                <button
-                  onClick={handleLogout}
+                <button type="button" onClick={handleLogout}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
                     padding: '10px 12px', borderRadius: '8px', border: 'none',

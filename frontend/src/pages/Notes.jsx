@@ -3,6 +3,7 @@ import {
   Plus, Search, Sparkles, Star, Trash2,
   Calendar, Tag, BookOpen, Upload,
 } from 'lucide-react'
+import { useIsMobile, useIsTablet } from '../hooks/useIsMobile'
 
 // ── Types / Mock Data ──────────────────────────────────────────────
 const INIT_NOTES = [
@@ -64,6 +65,9 @@ const TagPill = ({ tag }) => {
 
 // ── Main Component ─────────────────────────────────────────────────
 const Notes = () => {
+  const isMobile = useIsMobile()
+  const isTablet = useIsTablet()
+  const [showEditor, setShowEditor] = useState(false)
   const [notes,        setNotes]        = useState(INIT_NOTES)
   const [selectedId,   setSelectedId]   = useState(INIT_NOTES[0].id)
   const [searchQuery,  setSearchQuery]  = useState('')
@@ -90,6 +94,30 @@ const Notes = () => {
     setEditTitle(note.title)
     setEditContent(note.content)
     setIsDirty(false)
+    if (isMobile) {
+      setShowEditor(true)
+    }
+  }
+
+  // ── NEW: Create a blank new note ──
+  const handleCreateBlankNote = () => {
+    const newNote = {
+      id: Date.now().toString(),
+      title: 'Untitled Note',
+      content: '',
+      date: new Date().toISOString().split('T')[0],
+      tags: [],
+      aiGenerated: false,
+      starred: false,
+    }
+    setNotes(prev => [newNote, ...prev])
+    setSelectedId(newNote.id)
+    setEditTitle(newNote.title)
+    setEditContent(newNote.content)
+    setIsDirty(true)
+    if (isMobile) {
+      setShowEditor(true)
+    }
   }
 
   // ── NEW: Open file explorer on button click ──
@@ -188,7 +216,7 @@ const Notes = () => {
   }
 
   return (
-    <div style={{ maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '0', height: 'calc(100vh - 56px - 48px)' }}>
+    <div className="fade-up" style={{ maxWidth: '1600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '0', height: isMobile ? 'calc(100vh - 56px - 32px)' : 'calc(100vh - 56px - 48px)' }}>
 
       {/* ── Hidden file input — accepts text/markdown/code files ── */}
       <input
@@ -200,40 +228,62 @@ const Notes = () => {
       />
 
       {/* ── Page header ── */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div>
-          <h1 style={{ fontSize: '26px', fontWeight: 700, color: 'var(--foreground)', marginBottom: '4px', letterSpacing: '-0.02em' }}>
-            AI Notes
-          </h1>
-          <p style={{ fontSize: '14px', color: 'var(--foreground-muted)' }}>
-            Smart note-taking with AI assistance
-          </p>
+      {(!isMobile || !showEditor) && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
+          <div>
+            <h1 style={{ fontSize: isMobile ? '20px' : '26px', fontWeight: 700, color: 'var(--foreground)', marginBottom: '4px', letterSpacing: '-0.02em' }}>
+              AI Notes
+            </h1>
+            <p style={{ fontSize: '14px', color: 'var(--foreground-muted)' }}>
+              Smart note-taking with AI assistance
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={handleCreateBlankNote}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '8px',
+                padding: '10px 20px', borderRadius: '12px',
+                background: 'var(--primary)',
+                color: '#fff',
+                fontSize: '14px', fontWeight: 600, border: 'none', cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(124,58,237,0.35)',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#6d28d9'; e.currentTarget.style.transform = 'translateY(-1px)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.transform = 'none' }}
+            >
+              <Plus size={16} />
+              New Note
+            </button>
+
+            <button
+              onClick={handleNewNote}
+              disabled={isUploading}
+              title="Import note from text/markdown file"
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '42px', height: '42px', borderRadius: '12px',
+                background: 'var(--background-card)',
+                color: 'var(--foreground-muted)',
+                border: '1px solid var(--border)', cursor: isUploading ? 'wait' : 'pointer',
+                transition: 'all 0.15s',
+              }}
+              onMouseEnter={e => { if (!isUploading) { e.currentTarget.style.borderColor = 'var(--primary)'; e.currentTarget.style.color = 'var(--foreground)' } }}
+              onMouseLeave={e => { if (!isUploading) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--foreground-muted)' } }}
+            >
+              {isUploading ? <Upload size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Upload size={16} />}
+            </button>
+          </div>
         </div>
-        <button
-          onClick={handleNewNote}
-          disabled={isUploading}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '10px 20px', borderRadius: '12px',
-            background: isUploading ? 'rgba(124,58,237,0.5)' : 'var(--primary)',
-            color: '#fff',
-            fontSize: '14px', fontWeight: 600, border: 'none', cursor: isUploading ? 'wait' : 'pointer',
-            boxShadow: '0 4px 14px rgba(124,58,237,0.35)',
-            transition: 'all 0.15s',
-          }}
-          onMouseEnter={e => { if (!isUploading) { e.currentTarget.style.background = '#6d28d9'; e.currentTarget.style.transform = 'translateY(-1px)' } }}
-          onMouseLeave={e => { if (!isUploading) { e.currentTarget.style.background = 'var(--primary)'; e.currentTarget.style.transform = 'none' } }}
-        >
-          {isUploading ? <Upload size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Plus size={16} />}
-          {isUploading ? 'Loading...' : 'New Note'}
-        </button>
-      </div>
+      )}
 
       {/* ── Main grid ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '20px', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? '260px 1fr' : '340px 1fr', gap: '20px', flex: 1, minHeight: 0 }}>
 
         {/* ── LEFT: Note list ── */}
-        <div style={{ ...card, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'hidden' }}>
+        {(!isMobile || !showEditor) && (
+          <div style={{ ...card, padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px', overflow: 'hidden' }}>
 
           {/* Search */}
           <div style={{
@@ -325,17 +375,33 @@ const Notes = () => {
             )}
           </div>
         </div>
+        )}
 
-        {/* ── RIGHT: Editor ── */}
-        <div style={{ ...card, padding: '28px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {selectedNote ? (
-            <>
-              {/* Editor header */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-                marginBottom: '16px', paddingBottom: '16px',
-                borderBottom: '1px solid var(--border)',
-              }}>
+        {(!isMobile || showEditor) && (
+          <div style={{ ...card, padding: isMobile ? '16px' : '28px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            {selectedNote ? (
+              <>
+                {/* Back button on mobile */}
+                {isMobile && (
+                  <button
+                    onClick={() => setShowEditor(false)}
+                    style={{
+                      background: 'none', border: 'none', color: 'var(--primary)',
+                      fontSize: '14px', fontWeight: 600, display: 'inline-flex', alignItems: 'center',
+                      gap: '4px', cursor: 'pointer', padding: '0 0 12px 0',
+                      width: 'fit-content',
+                    }}
+                  >
+                    ← Back to Notes
+                  </button>
+                )}
+
+                {/* Editor header */}
+                <div style={{
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                  marginBottom: '16px', paddingBottom: '16px',
+                  borderBottom: '1px solid var(--border)',
+                }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   {/* Editable title */}
                   <input
@@ -374,6 +440,7 @@ const Notes = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px' }}>
                   <button
                     onClick={handleStar}
+                    aria-label={selectedNote.starred ? "Unstar note" : "Star note"}
                     style={{
                       width: '36px', height: '36px', borderRadius: '10px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -393,6 +460,7 @@ const Notes = () => {
                   </button>
                   <button
                     onClick={handleDelete}
+                    aria-label="Delete note"
                     style={{
                       width: '36px', height: '36px', borderRadius: '10px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -430,6 +498,7 @@ const Notes = () => {
                 {/* AI Enhance */}
                 <button
                   onClick={handleAIEnhance}
+                  aria-label="Enhance note with AI summary"
                   style={{
                     display: 'flex', alignItems: 'center', gap: '8px',
                     padding: '9px 18px', borderRadius: '10px', cursor: 'pointer',
@@ -485,10 +554,11 @@ const Notes = () => {
               <p style={{ fontSize: '13px', color: 'var(--foreground-muted)' }}>Select a note or create a new one</p>
             </div>
           )}
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  )
+    )
 }
 
 export default Notes
