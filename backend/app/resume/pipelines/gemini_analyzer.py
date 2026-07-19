@@ -27,6 +27,7 @@ from app.resume.schemas import (
     ATSScoringResult,
     SemanticScoringResult,
     GeminiInsights,
+    ImprovementSuggestion,
 )
 from app.resume.utils.text_utils import clamp
 
@@ -110,9 +111,9 @@ def _build_prompt(
         top_projects.append(f"  - {pr.project_name}: {pr.relevance_score:.2f} relevance")
     projects_summary = "\n".join(top_projects) or "  - No projects detected"
 
-    prompt = f"""You are an expert resume reviewer and career coach specialising in tech hiring.
-
-Analyse the following resume for a candidate targeting the role of **{target_domain}**.
+    prompt = f"""You are a ruthless, highly critical, and unbiased senior technical recruiter and career coach.
+Your job is to provide genuine, realistic feedback on this resume for a candidate targeting the role of **{target_domain}**.
+DO NOT sugarcoat your feedback. If the resume is bad or generic, say so professionally. 
 
 ## Resume Excerpt (first 2500 characters)
 ```
@@ -133,17 +134,24 @@ Analyse the following resume for a candidate targeting the role of **{target_dom
 Respond with ONLY a valid JSON object (no markdown, no extra text) with this exact schema:
 
 {{
-  "ai_summary": "<3 paragraph narrative: Para 1 = overall impression, Para 2 = specific strengths with examples, Para 3 = key improvement areas. Be specific, technical, and actionable. ~200 words total.>",
+  "ai_summary": "<3 paragraph narrative: Para 1 = brutally honest overall impression, Para 2 = specific strengths, Para 3 = critical weaknesses. Be extremely specific to the text provided. ~200 words.>",
   "top_strengths": ["<strength 1>", "<strength 2>", "<strength 3>"],
-  "top_improvements": ["<improvement 1>", "<improvement 2>", "<improvement 3>"],
+  "top_improvements": [
+    {{
+      "original_text": "<exact weak phrase found in the resume excerpt>",
+      "suggested_text": "<powerful, metric-driven replacement phrase>",
+      "reasoning": "<why this improves ATS/Recruiter perception>"
+    }},
+    ... (provide exactly 3 improvements based on actual text from the excerpt)
+  ],
   "gemini_holistic_score": <integer 0-100, holistic placement readiness estimate>
 }}
 
 Guidelines:
-- Be direct and professional. Use technical vocabulary appropriate for {target_domain}.
-- Strengths and improvements must be specific (not generic like "improve your resume").
-- gemini_holistic_score should account for the pre-computed metrics AND your assessment of the resume excerpt.
-- If the resume text is very sparse or unreadable, score conservatively (30–50 range).
+- Be direct, professional, and critical. Do not give generic praise.
+- For `top_improvements`, you MUST pick real phrases from the resume excerpt and provide a concrete "Instead of this -> Do this" suggestion.
+- gemini_holistic_score should account for the pre-computed metrics AND your harsh assessment of the resume excerpt.
+- If the resume text lacks metrics or strong verbs, score it conservatively (30–50 range).
 """
 
     return prompt
@@ -174,7 +182,19 @@ def _parse_gemini_response(
     """Validate and construct GeminiInsights from parsed JSON."""
     ai_summary = str(data.get("ai_summary", "")).strip()
     top_strengths = [str(s) for s in data.get("top_strengths", [])][:3]
-    top_improvements = [str(s) for s in data.get("top_improvements", [])][:3]
+    
+    raw_improvements = data.get("top_improvements", [])
+    parsed_improvements = []
+    if isinstance(raw_improvements, list):
+        for imp in raw_improvements[:3]:
+            if isinstance(imp, dict):
+                parsed_improvements.append(ImprovementSuggestion(
+                    original_text=str(imp.get("original_text", "Missing original text")),
+                    suggested_text=str(imp.get("suggested_text", "Missing suggestion")),
+                    reasoning=str(imp.get("reasoning", "Improves clarity and impact."))
+                ))
+    
+    top_improvements = parsed_improvements
 
     raw_score = data.get("gemini_holistic_score", 50)
     try:
@@ -229,8 +249,75 @@ def _default_strengths(skill_result: SkillAnalysisResult) -> list:
 def _default_improvements(ats_result: ATSScoringResult) -> list:
     improvements = []
     if ats_result.formatting_suggestions:
-        improvements.extend(ats_result.formatting_suggestions[:2])
+        improvements.append(ImprovementSuggestion(
+            original_text="Current formatting issues detected",
+            suggested_text=ats_result.formatting_suggestions[0],
+            reasoning="ATS parsers struggle with non-standard formatting."
+        ))
     if ats_result.weak_sections:
-        improvements.append(f"Strengthen these sections: {', '.join(ats_result.weak_sections[:3])}")
-    improvements.append("Add quantifiable achievements (metrics, percentages, impact numbers) to each experience entry")
+        improvements.append(ImprovementSuggestion(
+            original_text="Weak or missing standard sections",
+            suggested_text=f"Strengthen these sections: {', '.join(ats_result.weak_sections[:3])}",
+            reasoning="Recruiters expect a standard resume structure."
+        ))
+    improvements.append(ImprovementSuggestion(
+        original_text="Worked on tasks",
+        suggested_text="Architected systems resulting in 40% performance gain",
+        reasoning="Add quantifiable achievements (metrics, percentages) to each entry."
+    ))
     return improvements[:3]
+
+
+# ─── Rewrite Feature ─────────────────────────────────────────────────────────
+
+async def rewrite_resume_with_gemini(
+    gemini_model,
+    raw_text: str,
+    target_domain: str,
+) -> str:
+    """
+    Call Gemini to rewrite the resume text for the target domain.
+    Returns markdown text.
+    """
+    if gemini_model is None:
+        raise ValueError("Gemini model is required for rewriting resumes.")
+
+    prompt = f"""You are an expert resume writer and career coach specialising in tech hiring.
+
+Please rewrite the following resume for a candidate targeting the role of **{target_domain}**.
+
+## Original Resume Text
+```
+{raw_text}
+```
+
+## Task
+Rewrite this resume to maximize ATS compatibility and impact for the {target_domain} role.
+- Improve action verbs (e.g., use "Architected", "Engineered", "Spearheaded").
+- Ensure standard sections are present (Summary, Experience, Education, Skills, Projects).
+- Integrate keywords relevant to {target_domain} naturally into the experience and skills sections if the original text implies experience with them.
+- Ensure quantifiable metrics are highlighted or phrased effectively.
+- Return the fully rewritten resume in clean, professional Markdown format.
+
+Do not include any introductory or concluding remarks. Just output the Markdown resume.
+"""
+
+    try:
+        raw_response = await asyncio.to_thread(
+            gemini_model.generate_content, prompt
+        )
+        text = raw_response.text.strip()
+        
+        # Remove any Markdown code block wrapping if Gemini adds it
+        if text.startswith("```markdown"):
+            text = text[len("```markdown"):].strip()
+        if text.startswith("```"):
+            text = text[3:].strip()
+        if text.endswith("```"):
+            text = text[:-3].strip()
+            
+        return text
+    except Exception as exc:
+        logger.error(f"Gemini rewrite failed: {exc}", exc_info=True)
+        raise ValueError("Failed to rewrite resume using Gemini AI.")
+

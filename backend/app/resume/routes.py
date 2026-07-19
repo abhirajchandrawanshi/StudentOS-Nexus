@@ -25,6 +25,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from fastapi.responses import PlainTextResponse
 
 from app.resume.config import SUPPORTED_DOMAINS, MAX_FILE_SIZE_MB, ALLOWED_MIME_TYPES
 from app.resume.dependencies import get_resume_repo, get_gemini_client
@@ -36,6 +37,8 @@ from app.resume.schemas import (
     ResumeAnalysisReport,
 )
 from app.resume.service import ResumeAnalysisService
+from app.resume.pipelines.pdf_parser import extract_pdf_text
+from app.resume.pipelines.gemini_analyzer import rewrite_resume_with_gemini
 
 logger = logging.getLogger("resume.routes")
 
@@ -191,3 +194,61 @@ async def get_user_history(
             analyzed_at=a.created_at,
         ))
     return AnalysisHistoryResponse(user_id=user_id, items=items, total=len(items))
+
+
+# ─── POST /rewrite ─────────────────────────────────────────────────────────────
+
+@router.post(
+    "/rewrite",
+    response_class=PlainTextResponse,
+    summary="Rewrite a resume using AI",
+)
+async def rewrite_resume(
+    file: UploadFile = File(...),
+    target_domain: str = Form(...),
+):
+    """
+    Takes a PDF resume and rewrites it into an improved Markdown format
+    optimised for the target domain.
+    """
+    # Validate domain
+    if target_domain not in SUPPORTED_DOMAINS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unsupported domain: '{target_domain}'",
+        )
+
+    # Read file
+    try:
+        file_bytes = await file.read()
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Failed to read file: {exc}")
+
+    if not file_bytes:
+        raise HTTPException(status_code=422, detail="File is empty.")
+
+    # Get Gemini
+    try:
+        gemini_model = get_gemini_client()
+    except Exception:
+        raise HTTPException(status_code=503, detail="Gemini AI is not available.")
+
+    # Extract Text
+    try:
+        raw_text_obj = extract_pdf_text(file_bytes, file.filename or "resume.pdf")
+        if not raw_text_obj or not raw_text_obj.full_text.strip():
+            raise ValueError("No text extracted from PDF.")
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"PDF parsing failed: {exc}")
+
+    # Rewrite
+    try:
+        rewritten_md = await rewrite_resume_with_gemini(
+            gemini_model,
+            raw_text_obj.full_text,
+            target_domain
+        )
+        return rewritten_md
+    except Exception as exc:
+        logger.error(f"Rewrite error: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to rewrite resume.")

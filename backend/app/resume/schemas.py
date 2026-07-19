@@ -107,6 +107,11 @@ class ATSBreakdown(BaseModel):
     action_verbs_score: float = Field(ge=0.0, le=100.0)
 
 
+class ImprovementSuggestion(BaseModel):
+    original_text: str
+    suggested_text: str
+    reasoning: str
+
 class GeminiInsights(BaseModel):
     """Structured output from Gemini AI analysis."""
 
@@ -115,7 +120,7 @@ class GeminiInsights(BaseModel):
         description="Narrative 3-paragraph feedback from Gemini",
     )
     top_strengths: List[str] = Field(default_factory=list)
-    top_improvements: List[str] = Field(default_factory=list)
+    top_improvements: List[ImprovementSuggestion] = Field(default_factory=list)
     gemini_holistic_score: float = Field(
         default=50.0, ge=0.0, le=100.0,
         description="Gemini's holistic placement readiness estimate",

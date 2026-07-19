@@ -1,25 +1,5 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-<<<<<<< HEAD
-
-const useAuthStore = create(
-  persist(
-    (set) => ({
-      user: null,
-      token: null,
-      isLoading: false,
-      error: null,
-
-      login: (user, token) => set({ user, token, error: null }),
-      logout: () => set({ user: null, token: null }),
-      setLoading: (isLoading) => set({ isLoading }),
-      setError: (error) => set({ error }),
-      clearError: () => set({ error: null }),
-    }),
-    {
-      name: 'auth-storage',
-      partialize: (s) => ({ user: s.user, token: s.token }),
-=======
  
 const useAuthStore = create(
   persist(
@@ -72,14 +52,9 @@ const useAuthStore = create(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
->>>>>>> fc462d48ce69bd682d378efa519605f533f2b8e7
     }
   )
 )
 
-<<<<<<< HEAD
-export default useAuthStore
-=======
 export { useAuthStore }  
 export default useAuthStore
->>>>>>> fc462d48ce69bd682d378efa519605f533f2b8e7
