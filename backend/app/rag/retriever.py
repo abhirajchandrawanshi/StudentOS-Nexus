@@ -1,14 +1,14 @@
-from app.rag.embedder import model
-from app.rag.vectordb import collection
-
 def retrieve_chunks(query):
+    from app.rag.embedder import create_embeddings
+    from app.rag.vectordb import get_collection
 
     # Convert query into embedding
-    query_embedding = model.encode([query])
+    query_embedding = create_embeddings([query])
 
     # Search similar chunks
+    collection = get_collection()
     results = collection.query(
-        query_embeddings=query_embedding.tolist(),
+        query_embeddings=query_embedding.tolist() if hasattr(query_embedding, 'tolist') else query_embedding,
         n_results=3
     )
 

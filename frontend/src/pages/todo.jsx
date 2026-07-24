@@ -1,19 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
+import axios from 'axios'
 import {
   AlertTriangle,
   Calendar,
   CalendarClock,
   CheckCircle2,
   Circle,
+  Pencil,
   Plus,
   Search,
   Sparkles,
   Trash2,
   Wand2,
+  X,
 } from 'lucide-react'
 import { useIsMobile } from '../hooks/useIsMobile'
 
-const STORAGE_KEY = 'studentos.todo.v2'
+const API_URL = "http://127.0.0.1:8000/todo";
 
 const PRIORITY_ORDER = {
   high: 3,
@@ -21,39 +24,257 @@ const PRIORITY_ORDER = {
   low: 1,
 }
 
-const getInitialTasks = () => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+const PRIORITY_OPTIONS = ['high', 'medium', 'low']
+
+const STATUS_OPTIONS = ['Todo', 'Pending', 'In Progress', 'Completed', 'Blocked']
+
+const STATUS_STYLES = {
+  Todo: { color: '#7dd3fc', background: 'rgba(125,211,252,0.14)', border: '1px solid rgba(125,211,252,0.28)' },
+  Pending: { color: '#fbbf24', background: 'rgba(245,158,11,0.14)', border: '1px solid rgba(245,158,11,0.28)' },
+  'In Progress': { color: '#a78bfa', background: 'rgba(139,92,246,0.14)', border: '1px solid rgba(139,92,246,0.28)' },
+  Completed: { color: '#34d399', background: 'rgba(16,185,129,0.14)', border: '1px solid rgba(16,185,129,0.28)' },
+  Blocked: { color: '#f87171', background: 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.28)' },
+}
+
+const DEFAULT_CATEGORY_OPTIONS = ['General', 'Study', 'Work', 'Interview', 'Health', 'Personal']
+
+const DATE_FILTERS = [
+  { value: 'all', label: 'All Dates' },
+  { value: 'today', label: 'Today' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'overdue', label: 'Overdue' },
+  { value: 'completed', label: 'Completed' },
+]
+
+/* ------------------------------------------------------------------ */
+/* API <-> UI mapping                                                  */
+/* Backend uses snake_case. The component only ever touches camelCase. */
+/* All conversion happens in these two functions.                      */
+/* ------------------------------------------------------------------ */
+
+const mapApiTaskToTask = (apiTask) => ({
+  id: apiTask.id,
+  title: apiTask.title ?? '',
+  description: apiTask.description ?? '',
+  category: apiTask.category ?? 'General',
+  priority: (apiTask.priority || 'medium').toLowerCase(),
+  completed: Boolean(apiTask.completed),
+  status: apiTask.status || 'Todo',
+  progress: apiTask.progress ?? 0,
+  dueDate: apiTask.due_date || '',
+  dueTime: apiTask.due_time || '',
+  estimatedMinutes: apiTask.estimated_minutes ?? null,
+  actualMinutes: apiTask.actual_minutes ?? null,
+  reminderMinutesBefore: apiTask.reminder_minutes_before ?? null,
+  aiGenerated: Boolean(apiTask.ai_generated),
+  completedAt: apiTask.completed_at || null,
+  createdAt: apiTask.created_at || null,
+  updatedAt: apiTask.updated_at || null,
+})
+
+const mapTaskToApiPayload = (task) => ({
+  title: task.title,
+  description: task.description ?? '',
+  category: task.category ?? 'General',
+  priority: task.priority,
+  completed: Boolean(task.completed),
+  status: task.status || 'Todo',
+  progress: task.progress ?? 0,
+  due_date: task.dueDate || null,
+  due_time: task.dueTime || null,
+  estimated_minutes: task.estimatedMinutes ?? null,
+  actual_minutes: task.actualMinutes ?? null,
+  reminder_minutes_before: task.reminderMinutesBefore ?? null,
+  ai_generated: Boolean(task.aiGenerated),
+  completed_at: task.completedAt ?? null,
+})
+
+/* ------------------------------------------------------------------ */
+/* Status rules                                                        */
+/* Changing status drives progress/completed/completedAt automatically.*/
+/* Blocked intentionally leaves progress untouched.                    */
+/* ------------------------------------------------------------------ */
+
+const getStatusEffects = (status, currentProgress) => {
+  switch (status) {
+    case 'Todo':
+      return { status, progress: 0, completed: false, completedAt: null }
+    case 'Pending':
+      return { status, progress: 10, completed: false, completedAt: null }
+    case 'In Progress':
+      return { status, progress: 50, completed: false, completedAt: null }
+    case 'Completed':
+      return { status, progress: 100, completed: true, completedAt: new Date().toISOString() }
+    case 'Blocked':
+      return { status, progress: currentProgress ?? 0, completed: false, completedAt: null }
+    default:
+      return { status: 'Todo', progress: 0, completed: false, completedAt: null }
   }
 }
 
-const normalizeDate = (d) => {
-  const date = new Date(d)
+/* ------------------------------------------------------------------ */
+/* Date helpers                                                        */
+/* dueDate is a plain "YYYY-MM-DD" string. Feeding that straight into  */
+/* `new Date(str)` parses it as UTC midnight, which then renders as    */
+/* the previous day in any timezone behind UTC. parseDateOnly() below  */
+/* builds the Date in local time instead, so comparisons and labels    */
+/* are always correct regardless of the viewer's timezone.             */
+/* ------------------------------------------------------------------ */
+
+const parseDateOnly = (dateStr) => {
+  if (!dateStr) return null
+  const [year, month, day] = dateStr.split('-').map(Number)
+  if (!year || !month || !day) return null
+  const date = new Date(year, month - 1, day)
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+
+const startOfToday = () => {
+  const date = new Date()
   date.setHours(0, 0, 0, 0)
   return date
 }
 
 const isOverdue = (task) => {
   if (task.completed || !task.dueDate) return false
-  return normalizeDate(task.dueDate) < normalizeDate(new Date())
+
+  let due
+
+  if (task.dueTime) {
+    due = new Date(`${task.dueDate}T${task.dueTime}`)
+  } else {
+    due = new Date(task.dueDate)
+    due.setHours(23, 59, 59, 999)
+  }
+
+  return due < new Date()
 }
 
 const isToday = (task) => {
-  if (!task.dueDate) return false
-  return normalizeDate(task.dueDate).getTime() === normalizeDate(new Date()).getTime()
+  if (!task.dueDate || isOverdue(task)) return false
+
+  const today = new Date()
+  const due = new Date(task.dueDate)
+
+  return (
+    due.getFullYear() === today.getFullYear() &&
+    due.getMonth() === today.getMonth() &&
+    due.getDate() === today.getDate()
+  )
 }
 
-const formatDue = (task) => {
-  if (!task.dueDate) return 'No due date'
-  const date = new Date(task.dueDate)
-  const dateLabel = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  return task.time ? `${dateLabel} at ${task.time}` : dateLabel
+const isUpcoming = (task) => {
+  const due = parseDateOnly(task.dueDate)
+  return Boolean(due) && due > startOfToday() && !task.completed
 }
+
+const formatDueTime = (dueTime) => {
+  if (!dueTime) return ''
+  const [hoursStr, minutesStr] = dueTime.split(':')
+  const hours = Number(hoursStr)
+  const minutes = Number(minutesStr)
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return ''
+
+  const reference = new Date()
+  reference.setHours(hours, minutes, 0, 0)
+  return reference.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+}
+
+// "Jul 24, 2026" or "Jul 24, 2026 • 10:30 PM" when a due time is set.
+const formatDue = (task) => {
+  const due = parseDateOnly(task.dueDate)
+  if (!due) return 'No due date'
+
+  const dateLabel = due.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+
+  const timeLabel = formatDueTime(task.dueTime)
+  return timeLabel ? `${dateLabel} • ${timeLabel}` : dateLabel
+}
+
+/* ------------------------------------------------------------------ */
+/* AI natural-language parser                                          */
+/* ------------------------------------------------------------------ */
+
+const toIsoDate = (date) => {
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const parseAiTask = (text) => {
+  const input = text.trim()
+  if (!input) return null
+
+  const lower = input.toLowerCase()
+
+  let priority = 'medium'
+  if (/\b(high|urgent|asap|critical)\b/.test(lower)) priority = 'high'
+  if (/\b(low|later|whenever)\b/.test(lower)) priority = 'low'
+
+  const now = new Date()
+  let dueDate = ''
+
+  if (/\btomorrow\b/.test(lower)) {
+    const d = new Date(now)
+    d.setDate(d.getDate() + 1)
+    dueDate = toIsoDate(d)
+  } else if (/\btoday\b/.test(lower)) {
+    dueDate = toIsoDate(now)
+  } else {
+    const dateMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/)
+    if (dateMatch) {
+      dueDate = dateMatch[1]
+    }
+  }
+
+  const timeMatch = input.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i)
+  let dueTime = ''
+  if (timeMatch) {
+    const hrsRaw = Number(timeMatch[1])
+    const minsRaw = timeMatch[2] ? Number(timeMatch[2]) : 0
+    const meridiem = (timeMatch[3] || '').toLowerCase()
+
+    let hrs24 = hrsRaw
+    if (meridiem === 'pm' && hrs24 < 12) hrs24 += 12
+    if (meridiem === 'am' && hrs24 === 12) hrs24 = 0
+
+    if (hrs24 >= 0 && hrs24 < 24 && minsRaw >= 0 && minsRaw < 60) {
+      const hh = `${hrs24}`.padStart(2, '0')
+      const mm = `${minsRaw}`.padStart(2, '0')
+      dueTime = `${hh}:${mm}`
+    }
+  }
+
+  const cleaned = input
+    .replace(/\b(high|low|medium|urgent|asap|critical|today|tomorrow)\b/gi, '')
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, '')
+    .replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, '')
+    .replace(/[,-]+/g, ' ')
+    .trim()
+
+  const title = cleaned.length > 2 ? cleaned : input
+
+  return {
+    title,
+    priority,
+    dueDate,
+    dueTime,
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Presentational helpers                                              */
+/* ------------------------------------------------------------------ */
 
 const priorityStyle = (priority) => {
   if (priority === 'high') {
@@ -77,68 +298,34 @@ const priorityStyle = (priority) => {
   }
 }
 
-const parseAiTask = (text) => {
-  const input = text.trim()
-  if (!input) return null
+const statusStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.Todo
 
-  const lower = input.toLowerCase()
+const badgeBaseStyle = {
+  borderRadius: 8,
+  fontSize: 11,
+  fontWeight: 700,
+  padding: '4px 8px',
+  whiteSpace: 'nowrap',
+}
 
-  let priority = 'medium'
-  if (/\b(high|urgent|asap|critical)\b/.test(lower)) priority = 'high'
-  if (/\b(low|later|whenever)\b/.test(lower)) priority = 'low'
+const selectStyle = {
+  height: 40,
+  borderRadius: 12,
+  border: '1px solid rgba(255,255,255,0.08)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#ECE9FF',
+  padding: '0 12px',
+  fontFamily: 'inherit',
+}
 
-  const now = new Date()
-  let dueDate = ''
-
-  if (/\btomorrow\b/.test(lower)) {
-    const d = new Date(now)
-    d.setDate(d.getDate() + 1)
-    dueDate = d.toISOString().split('T')[0]
-  } else if (/\btoday\b/.test(lower)) {
-    dueDate = now.toISOString().split('T')[0]
-  } else {
-    const dateMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/)
-    if (dateMatch) {
-      dueDate = dateMatch[1]
-    }
-  }
-
-  const timeMatch = input.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i)
-  let time = ''
-  if (timeMatch) {
-    const hrsRaw = Number(timeMatch[1])
-    const minsRaw = timeMatch[2] ? Number(timeMatch[2]) : 0
-    const meridiem = (timeMatch[3] || '').toLowerCase()
-
-    let hrs24 = hrsRaw
-    if (meridiem === 'pm' && hrs24 < 12) hrs24 += 12
-    if (meridiem === 'am' && hrs24 === 12) hrs24 = 0
-
-    if (hrs24 >= 0 && hrs24 < 24 && minsRaw >= 0 && minsRaw < 60) {
-      const hh = `${hrs24}`.padStart(2, '0')
-      const mm = `${minsRaw}`.padStart(2, '0')
-      time = `${hh}:${mm}`
-    }
-  }
-
-  const cleaned = input
-    .replace(/\b(high|low|medium|urgent|asap|critical|today|tomorrow)\b/gi, '')
-    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, '')
-    .replace(/\b\d{1,2}(?::\d{2})?\s*(am|pm)?\b/gi, '')
-    .replace(/[,-]+/g, ' ')
-    .trim()
-
-  const title = cleaned.length > 2 ? cleaned : input
-
-  return {
-    id: crypto.randomUUID(),
-    title,
-    priority,
-    dueDate,
-    time,
-    completed: false,
-    createdAt: new Date().toISOString(),
-  }
+const inputStyle = {
+  height: 38,
+  borderRadius: 10,
+  border: '1px solid rgba(255,255,255,0.1)',
+  background: 'rgba(255,255,255,0.04)',
+  color: '#ECE9FF',
+  padding: '0 10px',
+  fontFamily: 'inherit',
 }
 
 const SectionHeader = ({ icon: Icon, title, count, color }) => (
@@ -160,70 +347,623 @@ const SectionHeader = ({ icon: Icon, title, count, color }) => (
   </div>
 )
 
+const StatTile = ({ label, value, color }) => (
+  <div
+    style={{
+      borderRadius: 12,
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.05)',
+      padding: '10px 8px',
+      textAlign: 'center',
+    }}
+  >
+    <div style={{ width: 7, height: 7, borderRadius: '50%', background: color, margin: '0 auto 6px' }} />
+    <p style={{ margin: 0, fontSize: 13, color: '#B5BAD0' }}>{label}</p>
+    <p style={{ margin: '2px 0 0', fontSize: 24 ? 20 : 20, color: '#ECE9FF', fontWeight: 700 }}>{value}</p>
+  </div>
+)
+
+const ProgressBar = ({ progress }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+    <div style={{ flex: 1, height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+      <div
+        style={{
+          width: `${Math.min(100, Math.max(0, progress || 0))}%`,
+          height: '100%',
+          borderRadius: 999,
+          background: 'linear-gradient(90deg, #8B5CF6, #EC4899)',
+        }}
+      />
+    </div>
+    <span style={{ fontSize: 11, color: '#8F97B3', minWidth: 30, textAlign: 'right' }}>{progress || 0}%</span>
+  </div>
+)
+
+/* Small "⏱ 60 min  🔔 15 min before" line shown under the due date. */
+/* Renders nothing at all if neither value exists on the task.        */
+const TaskMetaLine = ({ estimatedMinutes, reminderMinutesBefore }) => {
+  if (!estimatedMinutes && !reminderMinutesBefore) return null
+
+  return (
+    <p
+      style={{
+        margin: '2px 0 0',
+        color: '#8F97B3',
+        fontSize: 12,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+      }}
+    >
+      {estimatedMinutes ? <span>⏱ {estimatedMinutes} min</span> : null}
+      {reminderMinutesBefore ? <span>🔔 {reminderMinutesBefore} min before</span> : null}
+    </p>
+  )
+}
+
+const TaskList = ({ tasks, onToggle, onDelete, onEdit, onStatusChange }) => {
+  if (tasks.length === 0) {
+    return (
+      <div
+        style={{
+          border: '1px dashed rgba(255,255,255,0.1)',
+          borderRadius: 14,
+          minHeight: 86,
+          color: '#75809E',
+          display: 'grid',
+          placeItems: 'center',
+          marginBottom: 18,
+          fontSize: 15,
+        }}
+      >
+        No tasks here yet.
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+      {tasks.map((task) => (
+        <div
+          key={task.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 14,
+            padding: '10px 12px',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => onToggle(task.id)}
+            aria-label={task.completed ? 'mark task pending' : 'mark task done'}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: task.completed ? '#4ade80' : '#7F85A2',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center',
+            }}
+          >
+            {task.completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}
+          </button>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <p
+                style={{
+                  margin: '0 0 4px',
+                  color: task.completed ? '#8190AD' : '#ECE9FF',
+                  textDecoration: task.completed ? 'line-through' : 'none',
+                  fontWeight: 600,
+                  fontSize: 15,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  maxWidth: '100%',
+                }}
+              >
+                {task.title}
+              </p>
+              <span style={{ fontSize: 11, color: '#8F97B3', marginBottom: 4 }}>{task.category}</span>
+            </div>
+
+            {task.description ? (
+              <p
+                style={{
+                  margin: '0 0 4px',
+                  color: '#8F97B3',
+                  fontSize: 12,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {task.description}
+              </p>
+            ) : null}
+
+            <p style={{ margin: 0, color: '#94A3B8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <CalendarClock size={13} /> {formatDue(task)}
+            </p>
+
+            <TaskMetaLine
+              estimatedMinutes={task.estimatedMinutes}
+              reminderMinutesBefore={task.reminderMinutesBefore}
+            />
+
+            <ProgressBar progress={task.progress} />
+          </div>
+
+          <select
+            value={task.status}
+            onChange={(e) => onStatusChange(task.id, e.target.value)}
+            style={{
+              ...statusStyle(task.status),
+              ...badgeBaseStyle,
+              cursor: 'pointer',
+            }}
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option} style={{ color: '#111827' }}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <span style={{ ...priorityStyle(task.priority), ...badgeBaseStyle }}>
+            {task.priority.toUpperCase()}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => onEdit(task)}
+            aria-label="edit task"
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: '#B58DFF',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center',
+            }}
+          >
+            <Pencil size={16} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onDelete(task.id)}
+            aria-label="delete task"
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: '#FCA5A5',
+              cursor: 'pointer',
+              display: 'grid',
+              placeItems: 'center',
+            }}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const EMPTY_FORM = {
+  title: '',
+  description: '',
+  category: 'General',
+  customCategory: '',
+  priority: 'medium',
+  status: 'Todo',
+  dueDate: '',
+  dueTime: '',
+  estimatedMinutes: '',
+  reminderMinutesBefore: '',
+}
+
+const EditTaskModal = ({ task, categoryOptions, onSave, onClose }) => {
+  const [form, setForm] = useState(EMPTY_FORM)
+
+  useEffect(() => {
+    if (!task) return
+    const isKnownCategory = categoryOptions.includes(task.category)
+    setForm({
+      title: task.title || '',
+      description: task.description || '',
+      category: isKnownCategory ? task.category : 'Custom',
+      customCategory: isKnownCategory ? '' : task.category || '',
+      priority: task.priority || 'medium',
+      status: task.status || 'Todo',
+      dueDate: task.dueDate || '',
+      dueTime: task.dueTime || '',
+      estimatedMinutes: task.estimatedMinutes ?? '',
+      reminderMinutesBefore: task.reminderMinutesBefore ?? '',
+    })
+  }, [task, categoryOptions])
+
+  if (!task) return null
+
+  const updateField = (field, value) => setForm((prev) => ({ ...prev, [field]: value }))
+
+  const handleSave = () => {
+    const title = form.title.trim()
+    if (!title) return
+
+    const category = form.category === 'Custom' ? form.customCategory.trim() || 'General' : form.category
+
+    onSave(task.id, {
+      title,
+      description: form.description,
+      category,
+      priority: form.priority,
+      status: form.status,
+      dueDate: form.dueDate || null,
+      dueTime: form.dueTime || null,
+      estimatedMinutes: form.estimatedMinutes === '' ? null : Number(form.estimatedMinutes),
+      reminderMinutesBefore: form.reminderMinutesBefore === '' ? null : Number(form.reminderMinutesBefore),
+    })
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(8,6,16,0.6)',
+        display: 'grid',
+        placeItems: 'center',
+        zIndex: 50,
+        padding: 16,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 460,
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          background: 'linear-gradient(180deg, rgba(26,20,45,0.98), rgba(18,14,31,0.98))',
+          border: '1px solid rgba(124,58,237,0.24)',
+          borderRadius: 18,
+          padding: 22,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <p style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#F3EEFF' }}>Edit Task</p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="close edit task"
+            style={{ border: 'none', background: 'transparent', color: '#9DA4C0', cursor: 'pointer', display: 'grid', placeItems: 'center' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <input
+            value={form.title}
+            onChange={(e) => updateField('title', e.target.value)}
+            placeholder="Task title"
+            style={{ ...inputStyle, width: '100%' }}
+          />
+
+          <textarea
+            value={form.description}
+            onChange={(e) => updateField('description', e.target.value)}
+            placeholder="Description"
+            style={{
+              ...inputStyle,
+              height: 84,
+              paddingTop: 8,
+              resize: 'vertical',
+              width: '100%',
+            }}
+          />
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <select value={form.category} onChange={(e) => updateField('category', e.target.value)} style={selectStyle}>
+              {categoryOptions.map((option) => (
+                <option key={option} value={option} style={{ color: '#111827' }}>
+                  {option}
+                </option>
+              ))}
+              <option value="Custom" style={{ color: '#111827' }}>Custom…</option>
+            </select>
+
+            <select value={form.priority} onChange={(e) => updateField('priority', e.target.value)} style={selectStyle}>
+              {PRIORITY_OPTIONS.map((option) => (
+                <option key={option} value={option} style={{ color: '#111827' }}>
+                  {option.charAt(0).toUpperCase() + option.slice(1)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {form.category === 'Custom' && (
+            <input
+              value={form.customCategory}
+              onChange={(e) => updateField('customCategory', e.target.value)}
+              placeholder="Custom category name"
+              style={{ ...inputStyle, width: '100%' }}
+            />
+          )}
+
+          <select value={form.status} onChange={(e) => updateField('status', e.target.value)} style={selectStyle}>
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option} style={{ color: '#111827' }}>
+                {option}
+              </option>
+            ))}
+          </select>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <input type="date" value={form.dueDate} onChange={(e) => updateField('dueDate', e.target.value)} style={inputStyle} />
+            <input type="time" value={form.dueTime} onChange={(e) => updateField('dueTime', e.target.value)} style={inputStyle} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <input
+              type="number"
+              min="0"
+              value={form.estimatedMinutes}
+              onChange={(e) => updateField('estimatedMinutes', e.target.value)}
+              placeholder="Estimated minutes"
+              style={inputStyle}
+            />
+            <input
+              type="number"
+              min="0"
+              value={form.reminderMinutesBefore}
+              onChange={(e) => updateField('reminderMinutesBefore', e.target.value)}
+              placeholder="Remind before (min)"
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: 10,
+                border: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(255,255,255,0.04)',
+                color: '#ECE9FF',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              style={{
+                flex: 1,
+                height: 40,
+                borderRadius: 10,
+                border: 'none',
+                background: 'linear-gradient(90deg, #8B5CF6, #EC4899)',
+                color: '#fff',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Main component                                                      */
+/* ------------------------------------------------------------------ */
+
 const Todo = () => {
   const isMobile = useIsMobile()
 
-  const [tasks, setTasks] = useState(() => getInitialTasks())
+  const [tasks, setTasks] = useState([])
   const [query, setQuery] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState('all')
   const [aiInput, setAiInput] = useState('')
   const [manualOpen, setManualOpen] = useState(false)
   const [manualTitle, setManualTitle] = useState('')
+  const [manualDescription, setManualDescription] = useState('')
   const [manualDate, setManualDate] = useState('')
   const [manualTime, setManualTime] = useState('')
   const [manualPriority, setManualPriority] = useState('high')
+  const [manualCategory, setManualCategory] = useState('General')
+  const [manualStatus, setManualStatus] = useState('Todo')
+  const [manualEstimatedMinutes, setManualEstimatedMinutes] = useState('')
+  const [manualReminderMinutesBefore, setManualReminderMinutesBefore] = useState('')
+  const [editingTask, setEditingTask] = useState(null)
 
-  const saveTasks = (next) => {
-    setTasks(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  const loadTasks = useCallback(async () => {
+    try {
+      const response = await axios.get(API_URL)
+      setTasks(response.data.map(mapApiTaskToTask))
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadTasks()
+  }, [loadTasks])
+
+  const createTask = async (taskDraft) => {
+    try {
+      await axios.post(API_URL, mapTaskToApiPayload(taskDraft))
+      await loadTasks()
+      return true
+    } catch (error) {
+      console.error('Error creating task:', error)
+      return false
+    }
   }
 
-  const addManualTask = () => {
+  const addManualTask = async () => {
     const title = manualTitle.trim()
     if (!title) return
 
-    const nextTask = {
-      id: crypto.randomUUID(),
-      title,
-      dueDate: manualDate,
-      time: manualTime,
-      priority: manualPriority,
-      completed: false,
-      createdAt: new Date().toISOString(),
-    }
+    const statusEffects = getStatusEffects(manualStatus, 0)
 
-    saveTasks([nextTask, ...tasks])
-    setManualTitle('')
-    setManualDate('')
-    setManualTime('')
-    setManualPriority('high')
-    setManualOpen(false)
+    const created = await createTask({
+      title,
+      description: manualDescription,
+      category: manualCategory || 'General',
+      priority: manualPriority,
+      completed: statusEffects.completed,
+      status: statusEffects.status,
+      progress: statusEffects.progress,
+      dueDate: manualDate || null,
+      dueTime: manualTime || null,
+      estimatedMinutes: manualEstimatedMinutes === '' ? null : Number(manualEstimatedMinutes),
+      actualMinutes: null,
+      reminderMinutesBefore: manualReminderMinutesBefore === '' ? null : Number(manualReminderMinutesBefore),
+      aiGenerated: false,
+      completedAt: statusEffects.completedAt,
+    })
+
+    if (created) {
+      setManualTitle('')
+      setManualDescription('')
+      setManualDate('')
+      setManualTime('')
+      setManualPriority('high')
+      setManualCategory('General')
+      setManualStatus('Todo')
+      setManualEstimatedMinutes('')
+      setManualReminderMinutesBefore('')
+      setManualOpen(false)
+    }
   }
 
-  const addAiTask = () => {
+  const addAiTask = async () => {
     const parsed = parseAiTask(aiInput)
     if (!parsed) return
-    saveTasks([parsed, ...tasks])
-    setAiInput('')
+
+    const created = await createTask({
+      title: parsed.title,
+      description: '',
+      category: 'General',
+      priority: parsed.priority,
+      completed: false,
+      status: 'Todo',
+      progress: 0,
+      dueDate: parsed.dueDate || null,
+      dueTime: parsed.dueTime || null,
+      estimatedMinutes: null,
+      actualMinutes: null,
+      reminderMinutesBefore: null,
+      aiGenerated: true,
+      completedAt: null,
+    })
+
+    if (created) {
+      setAiInput('')
+    }
   }
 
-  const toggleTask = (id) => {
-    const next = tasks.map((task) => (task.id === id ? { ...task, completed: !task.completed } : task))
-    saveTasks(next)
+  const updateTask = useCallback(
+    async (id, changes) => {
+      const task = tasks.find((t) => t.id === id)
+      if (!task) return
+
+      const updated = { ...task, ...changes }
+
+      try {
+        await axios.put(`${API_URL}/${id}`, mapTaskToApiPayload(updated))
+        await loadTasks()
+      } catch (error) {
+        console.error('Error updating task:', error)
+      }
+    },
+    [tasks, loadTasks]
+  )
+
+  const toggleTask = useCallback(
+    (id) => {
+      const task = tasks.find((t) => t.id === id)
+      if (!task) return
+
+      const nextStatus = task.completed ? 'Todo' : 'Completed'
+      updateTask(id, getStatusEffects(nextStatus, task.progress))
+    },
+    [tasks, updateTask]
+  )
+
+  const changeTaskStatus = useCallback(
+    (id, nextStatus) => {
+      const task = tasks.find((t) => t.id === id)
+      if (!task) return
+      updateTask(id, getStatusEffects(nextStatus, task.progress))
+    },
+    [tasks, updateTask]
+  )
+
+  const saveEditedTask = useCallback(
+    async (id, changes) => {
+      await updateTask(id, changes)
+      setEditingTask(null)
+    },
+    [updateTask]
+  )
+
+  const removeTask = async (id) => {
+    try {
+      await axios.delete(`${API_URL}/${id}`)
+      await loadTasks()
+    } catch (error) {
+      console.error('Error removing task:', error)
+    }
   }
 
-  const removeTask = (id) => {
-    saveTasks(tasks.filter((task) => task.id !== id))
-  }
+  const categoryOptions = useMemo(() => {
+    const fromTasks = tasks.map((task) => task.category).filter(Boolean)
+    return Array.from(new Set([...DEFAULT_CATEGORY_OPTIONS, ...fromTasks]))
+  }, [tasks])
+
+  const matchesDateFilter = useCallback((task, filter) => {
+    if (filter === 'all') return true
+    if (filter === 'today') return isToday(task) && !task.completed
+    if (filter === 'upcoming') return isUpcoming(task)
+    if (filter === 'overdue') return isOverdue(task)
+    if (filter === 'completed') return task.completed
+    return true
+  }, [])
 
   const visibleTasks = useMemo(() => {
     const q = query.trim().toLowerCase()
 
     return tasks
       .filter((task) => {
-        const matchesQuery = !q || task.title.toLowerCase().includes(q)
+        const haystack = [task.title, task.description, task.category, task.priority, task.status]
+          .join(' ')
+          .toLowerCase()
+        const matchesQuery = !q || haystack.includes(q)
         const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter
-        return matchesQuery && matchesPriority
+        const matchesStatus = statusFilter === 'all' || task.status === statusFilter
+        const matchesCategory = categoryFilter === 'all' || task.category === categoryFilter
+        const matchesDate = matchesDateFilter(task, dateFilter)
+        return matchesQuery && matchesPriority && matchesStatus && matchesCategory && matchesDate
       })
       .sort((a, b) => {
         if (a.completed !== b.completed) return a.completed ? 1 : -1
@@ -232,11 +972,11 @@ const Todo = () => {
         const scoreB = PRIORITY_ORDER[b.priority] + (isOverdue(b) ? 2 : 0) + (isToday(b) ? 1 : 0)
         if (scoreA !== scoreB) return scoreB - scoreA
 
-        const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Number.MAX_SAFE_INTEGER
-        const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Number.MAX_SAFE_INTEGER
+        const aDate = parseDateOnly(a.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER
+        const bDate = parseDateOnly(b.dueDate)?.getTime() ?? Number.MAX_SAFE_INTEGER
         return aDate - bDate
       })
-  }, [tasks, query, priorityFilter])
+  }, [tasks, query, priorityFilter, statusFilter, categoryFilter, dateFilter, matchesDateFilter])
 
   const grouped = useMemo(() => {
     const overdue = visibleTasks.filter((task) => isOverdue(task))
@@ -246,13 +986,35 @@ const Todo = () => {
   }, [visibleTasks])
 
   const stats = useMemo(() => {
-    const done = tasks.filter((task) => task.completed).length
     const total = tasks.length
+    const countByStatus = (status) => tasks.filter((task) => task.status === status).length
+
     const high = tasks.filter((task) => task.priority === 'high' && !task.completed).length
     const medium = tasks.filter((task) => task.priority === 'medium' && !task.completed).length
     const low = tasks.filter((task) => task.priority === 'low' && !task.completed).length
-    const percent = total ? Math.round((done / total) * 100) : 0
-    return { done, total, high, medium, low, percent }
+
+    const overdueCount = tasks.filter((task) => isOverdue(task)).length
+    const todayCount = tasks.filter((task) => isToday(task) && !task.completed).length
+    const upcomingCount = tasks.filter((task) => isUpcoming(task)).length
+
+    const percent = total
+      ? Math.round(tasks.reduce((sum, task) => sum + (task.progress || 0), 0) / total)
+      : 0
+
+    return {
+      total,
+      done: countByStatus('Completed'),
+      pending: countByStatus('Pending'),
+      inProgress: countByStatus('In Progress'),
+      blocked: countByStatus('Blocked'),
+      high,
+      medium,
+      low,
+      percent,
+      overdueCount,
+      todayCount,
+      upcomingCount,
+    }
   }, [tasks])
 
   const boardStyle = {
@@ -320,26 +1082,20 @@ const Todo = () => {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {[
-                { label: 'High', value: stats.high, color: '#f87171' },
-                { label: 'Medium', value: stats.medium, color: '#fbbf24' },
-                { label: 'Low', value: stats.low, color: '#34d399' },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    borderRadius: 12,
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.05)',
-                    padding: '10px 8px',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: item.color, margin: '0 auto 6px' }} />
-                  <p style={{ margin: 0, fontSize: 13, color: '#B5BAD0' }}>{item.label}</p>
-                  <p style={{ margin: '2px 0 0', fontSize: 24 ? 20 : 20, color: '#ECE9FF', fontWeight: 700 }}>{item.value}</p>
-                </div>
-              ))}
+              <StatTile label="High" value={stats.high} color="#f87171" />
+              <StatTile label="Medium" value={stats.medium} color="#fbbf24" />
+              <StatTile label="Low" value={stats.low} color="#34d399" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: 8 }}>
+              <StatTile label="Completed" value={stats.done} color="#34d399" />
+              <StatTile label="Pending" value={stats.pending} color="#fbbf24" />
+              <StatTile label="In Progress" value={stats.inProgress} color="#a78bfa" />
+              <StatTile label="Blocked" value={stats.blocked} color="#f87171" />
+              <StatTile label="Overdue" value={stats.overdueCount} color="#f87171" />
+              <StatTile label="Today" value={stats.todayCount} color="#7dd3fc" />
+              <StatTile label="Upcoming" value={stats.upcomingCount} color="#7dd3fc" />
+              <StatTile label="Total" value={stats.total} color="#B58DFF" />
             </div>
           </div>
 
@@ -399,7 +1155,7 @@ const Todo = () => {
             display: 'grid',
             gridTemplateColumns: isMobile ? '1fr' : '1fr 140px auto',
             gap: 10,
-            marginBottom: 16,
+            marginBottom: 10,
           }}>
             <div style={{ position: 'relative' }}>
               <Search size={16} style={{ position: 'absolute', top: 12, left: 12, color: '#7F85A2' }} />
@@ -423,15 +1179,7 @@ const Todo = () => {
             <select
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              style={{
-                height: 40,
-                borderRadius: 12,
-                border: '1px solid rgba(255,255,255,0.08)',
-                background: 'rgba(255,255,255,0.04)',
-                color: '#ECE9FF',
-                padding: '0 12px',
-                fontFamily: 'inherit',
-              }}
+              style={selectStyle}
             >
               <option value="all" style={{ color: '#111827' }}>All</option>
               <option value="high" style={{ color: '#111827' }}>High</option>
@@ -461,6 +1209,41 @@ const Todo = () => {
             </button>
           </div>
 
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+              gap: 10,
+              marginBottom: 16,
+            }}
+          >
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
+              <option value="all" style={{ color: '#111827' }}>All Statuses</option>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option} value={option} style={{ color: '#111827' }}>
+                  {option}
+                </option>
+              ))}
+            </select>
+
+            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} style={selectStyle}>
+              <option value="all" style={{ color: '#111827' }}>All Categories</option>
+              {categoryOptions.map((option) => (
+                <option key={option} value={option} style={{ color: '#111827' }}>
+                  {option}
+                </option>
+              ))}
+            </select>
+
+            <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} style={selectStyle}>
+              {DATE_FILTERS.map((option) => (
+                <option key={option.value} value={option.value} style={{ color: '#111827' }}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {manualOpen && (
             <div style={{
               border: '1px solid rgba(124,58,237,0.28)',
@@ -469,65 +1252,44 @@ const Todo = () => {
               padding: 12,
               marginBottom: 14,
             }}>
-              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.8fr 1fr 1fr 1fr auto', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.6fr 1fr 1fr 1fr 1fr auto', gap: 8 }}>
                 <input
                   value={manualTitle}
                   onChange={(e) => setManualTitle(e.target.value)}
                   placeholder="Task title"
-                  style={{
-                    height: 38,
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#ECE9FF',
-                    padding: '0 10px',
-                    fontFamily: 'inherit',
-                  }}
+                  style={{ ...inputStyle, width: '100%' }}
                 />
                 <input
                   type="date"
                   value={manualDate}
                   onChange={(e) => setManualDate(e.target.value)}
-                  style={{
-                    height: 38,
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#ECE9FF',
-                    padding: '0 10px',
-                    fontFamily: 'inherit',
-                  }}
+                  style={inputStyle}
                 />
                 <input
                   type="time"
                   value={manualTime}
                   onChange={(e) => setManualTime(e.target.value)}
-                  style={{
-                    height: 38,
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#ECE9FF',
-                    padding: '0 10px',
-                    fontFamily: 'inherit',
-                  }}
+                  style={inputStyle}
                 />
                 <select
                   value={manualPriority}
                   onChange={(e) => setManualPriority(e.target.value)}
-                  style={{
-                    height: 38,
-                    borderRadius: 10,
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'rgba(255,255,255,0.04)',
-                    color: '#ECE9FF',
-                    padding: '0 10px',
-                    fontFamily: 'inherit',
-                  }}
+                  style={inputStyle}
                 >
                   <option value="high" style={{ color: '#111827' }}>High</option>
                   <option value="medium" style={{ color: '#111827' }}>Medium</option>
                   <option value="low" style={{ color: '#111827' }}>Low</option>
+                </select>
+                <select
+                  value={manualCategory}
+                  onChange={(e) => setManualCategory(e.target.value)}
+                  style={inputStyle}
+                >
+                  {categoryOptions.map((option) => (
+                    <option key={option} value={option} style={{ color: '#111827' }}>
+                      {option}
+                    </option>
+                  ))}
                 </select>
                 <button
                   type="button"
@@ -546,117 +1308,89 @@ const Todo = () => {
                   Add
                 </button>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.6fr 1fr 1fr 1fr', gap: 8, marginTop: 8 }}>
+                <textarea
+                  value={manualDescription}
+                  onChange={(e) => setManualDescription(e.target.value)}
+                  placeholder="Description (optional)"
+                  style={{
+                    ...inputStyle,
+                    height: 38,
+                    minHeight: 38,
+                    paddingTop: 8,
+                    resize: 'vertical',
+                    width: '100%',
+                  }}
+                />
+                <select
+                  value={manualStatus}
+                  onChange={(e) => setManualStatus(e.target.value)}
+                  style={inputStyle}
+                >
+                  {STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option} style={{ color: '#111827' }}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="0"
+                  value={manualEstimatedMinutes}
+                  onChange={(e) => setManualEstimatedMinutes(e.target.value)}
+                  placeholder="Estimated minutes"
+                  style={inputStyle}
+                />
+                <input
+                  type="number"
+                  min="0"
+                  value={manualReminderMinutesBefore}
+                  onChange={(e) => setManualReminderMinutesBefore(e.target.value)}
+                  placeholder="Remind before (min)"
+                  style={inputStyle}
+                />
+              </div>
             </div>
           )}
 
           <div style={{ maxHeight: isMobile ? 'unset' : '64vh', overflowY: 'auto', paddingRight: 4 }}>
             <SectionHeader icon={AlertTriangle} title="Overdue" count={grouped.overdue.length} color="#f87171" />
-            <TaskList tasks={grouped.overdue} onToggle={toggleTask} onDelete={removeTask} />
+            <TaskList
+              tasks={grouped.overdue}
+              onToggle={toggleTask}
+              onDelete={removeTask}
+              onEdit={setEditingTask}
+              onStatusChange={changeTaskStatus}
+            />
 
             <SectionHeader icon={CalendarClock} title="Today" count={grouped.today.length} color="#a78bfa" />
-            <TaskList tasks={grouped.today} onToggle={toggleTask} onDelete={removeTask} />
+            <TaskList
+              tasks={grouped.today}
+              onToggle={toggleTask}
+              onDelete={removeTask}
+              onEdit={setEditingTask}
+              onStatusChange={changeTaskStatus}
+            />
 
             <SectionHeader icon={Calendar} title="Upcoming" count={grouped.upcoming.length} color="#7dd3fc" />
-            <TaskList tasks={grouped.upcoming} onToggle={toggleTask} onDelete={removeTask} />
+            <TaskList
+              tasks={grouped.upcoming}
+              onToggle={toggleTask}
+              onDelete={removeTask}
+              onEdit={setEditingTask}
+              onStatusChange={changeTaskStatus}
+            />
           </div>
         </section>
       </div>
-    </div>
-  )
-}
 
-const TaskList = ({ tasks, onToggle, onDelete }) => {
-  if (tasks.length === 0) {
-    return (
-      <div
-        style={{
-          border: '1px dashed rgba(255,255,255,0.1)',
-          borderRadius: 14,
-          minHeight: 86,
-          color: '#75809E',
-          display: 'grid',
-          placeItems: 'center',
-          marginBottom: 18,
-          fontSize: 15,
-        }}
-      >
-        No tasks here yet.
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
-      {tasks.map((task) => (
-        <div
-          key={task.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.07)',
-            borderRadius: 14,
-            padding: '10px 12px',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => onToggle(task.id)}
-            aria-label={task.completed ? 'mark task pending' : 'mark task done'}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: task.completed ? '#4ade80' : '#7F85A2',
-              cursor: 'pointer',
-              display: 'grid',
-              placeItems: 'center',
-            }}
-          >
-            {task.completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}
-          </button>
-
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p
-              style={{
-                margin: '0 0 4px',
-                color: task.completed ? '#8190AD' : '#ECE9FF',
-                textDecoration: task.completed ? 'line-through' : 'none',
-                fontWeight: 600,
-                fontSize: 15,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-              }}
-            >
-              {task.title}
-            </p>
-            <p style={{ margin: 0, color: '#94A3B8', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CalendarClock size={13} /> {formatDue(task)}
-            </p>
-          </div>
-
-          <span style={{ ...priorityStyle(task.priority), borderRadius: 8, fontSize: 11, fontWeight: 700, padding: '4px 8px' }}>
-            {task.priority.toUpperCase()}
-          </span>
-
-          <button
-            type="button"
-            onClick={() => onDelete(task.id)}
-            aria-label="delete task"
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: '#FCA5A5',
-              cursor: 'pointer',
-              display: 'grid',
-              placeItems: 'center',
-            }}
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      ))}
+      <EditTaskModal
+        task={editingTask}
+        categoryOptions={categoryOptions}
+        onSave={saveEditedTask}
+        onClose={() => setEditingTask(null)}
+      />
     </div>
   )
 }
