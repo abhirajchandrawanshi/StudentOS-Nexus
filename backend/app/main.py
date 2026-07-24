@@ -13,6 +13,7 @@ from app.rag.vectordb import store_chunks
 from app.dsa.routes import router as dsa_router
 from app.resume.routes import router as resume_router
 from app.todo.routes import router as todo_router
+from app.todo.analytics_routes import router as analytics_router
 from app.database import init_db
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ app = FastAPI(
 app.include_router(dsa_router,    prefix="/dsa",    tags=["DSA"])
 app.include_router(resume_router, prefix="/resume", tags=["Resume"])
 app.include_router(todo_router, prefix="/todo", tags=["Todo"])
+app.include_router(analytics_router)
 
 # ─── CORS — allow frontend to call this API ────────────────────────
 app.add_middleware(

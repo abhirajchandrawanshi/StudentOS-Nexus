@@ -14,7 +14,9 @@ class TodoRepository:
 
     async def get_all_tasks(self):
         result = await self.db.execute(
-            select(Todo).order_by(Todo.created_at.desc())
+            select(Todo)
+            .where(Todo.is_deleted == False)
+            .order_by(Todo.created_at.desc())
         )
         return result.scalars().all()
 
@@ -36,6 +38,12 @@ class TodoRepository:
             estimated_minutes=task.estimated_minutes,
             reminder_minutes_before=task.reminder_minutes_before,
             ai_generated=task.ai_generated,
+
+            # Recurring Task Fields
+            is_recurring=task.is_recurring,
+            repeat_type=task.repeat_type,
+            repeat_interval=task.repeat_interval,
+            times_per_day=task.times_per_day,
         )
 
         self.db.add(new_task)
@@ -65,6 +73,7 @@ class TodoRepository:
         if todo.completed:
             todo.completed_at = datetime.utcnow()
             todo.progress = 100
+            todo.status = "Completed"
 
         await self.db.commit()
 
@@ -79,7 +88,8 @@ class TodoRepository:
         if not todo:
             return False
 
-        await self.db.delete(todo)
+        # Soft Delete
+        todo.is_deleted = True
 
         await self.db.commit()
 

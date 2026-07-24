@@ -14,6 +14,10 @@ class TodoCreate(BaseModel):
     estimated_minutes: Optional[int] = 0
     reminder_minutes_before: Optional[int] = 60
     ai_generated: Optional[bool] = False
+    is_recurring: Optional[bool] = False
+    repeat_type: Optional[str] = "none"
+    repeat_interval: Optional[int] = 1
+    times_per_day: Optional[int] = 1
 
 
 class TodoUpdate(BaseModel):
@@ -29,6 +33,10 @@ class TodoUpdate(BaseModel):
     estimated_minutes: Optional[int] = None
     actual_minutes: Optional[int] = None
     reminder_minutes_before: Optional[int] = None
+    is_recurring: Optional[bool] = None
+    repeat_type: Optional[str] = None
+    repeat_interval: Optional[int] = None
+    times_per_day: Optional[int] = None
 
 
 class TodoResponse(BaseModel):
@@ -46,6 +54,12 @@ class TodoResponse(BaseModel):
     actual_minutes: int
     reminder_minutes_before: int
     ai_generated: bool
+    is_recurring: bool
+    repeat_type: str
+    repeat_interval: int
+    times_per_day: int
+    is_deleted: bool
+    last_generated_date: Optional[date]
     completed_at: Optional[datetime]
     created_at: datetime
     updated_at: datetime

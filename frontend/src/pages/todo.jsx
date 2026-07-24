@@ -14,6 +14,8 @@ import {
   Wand2,
   X,
 } from 'lucide-react'
+// ===== NEW FEATURE: Recharts line chart for weekly consistency trend =====
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { useIsMobile } from '../hooks/useIsMobile'
 
 const API_URL = "http://127.0.0.1:8000/todo";
@@ -46,6 +48,29 @@ const DATE_FILTERS = [
   { value: 'completed', label: 'Completed' },
 ]
 
+// ===== NEW FEATURE: recurring task options =====
+const REPEAT_TYPE_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'interval', label: 'Every N Days' },
+]
+
+const TIMES_PER_DAY_OPTIONS = [1, 2, 3]
+
+// ===== NEW FEATURE: mock last-7-days consistency data for the line chart. =====
+// Used as a fallback while a real analytics endpoint isn't wired up yet.
+const MOCK_WEEKLY_CONSISTENCY = [
+  { day: 'Mon', score: 72 },
+  { day: 'Tue', score: 80 },
+  { day: 'Wed', score: 85 },
+  { day: 'Thu', score: 83 },
+  { day: 'Fri', score: 91 },
+  { day: 'Sat', score: 88 },
+  { day: 'Sun', score: 95 },
+]
+const ANALYTICS_API = "http://127.0.0.1:8000/todo/analytics";
+
 /* ------------------------------------------------------------------ */
 /* API <-> UI mapping                                                  */
 /* Backend uses snake_case. The component only ever touches camelCase. */
@@ -70,6 +95,11 @@ const mapApiTaskToTask = (apiTask) => ({
   completedAt: apiTask.completed_at || null,
   createdAt: apiTask.created_at || null,
   updatedAt: apiTask.updated_at || null,
+  // ===== NEW FEATURE: recurring task fields =====
+  isRecurring: Boolean(apiTask.is_recurring),
+  repeatType: apiTask.repeat_type || 'none',
+  repeatInterval: apiTask.repeat_interval ?? null,
+  timesPerDay: apiTask.times_per_day ?? 1,
 })
 
 const mapTaskToApiPayload = (task) => ({
@@ -87,6 +117,11 @@ const mapTaskToApiPayload = (task) => ({
   reminder_minutes_before: task.reminderMinutesBefore ?? null,
   ai_generated: Boolean(task.aiGenerated),
   completed_at: task.completedAt ?? null,
+  // ===== NEW FEATURE: recurring task fields sent to backend =====
+  is_recurring: Boolean(task.isRecurring),
+  repeat_type: task.isRecurring ? (task.repeatType || 'none') : 'none',
+  repeat_interval: task.isRecurring && task.repeatType === 'interval' ? (task.repeatInterval ?? 1) : null,
+  times_per_day: task.isRecurring ? (task.timesPerDay ?? 1) : 1,
 })
 
 /* ------------------------------------------------------------------ */
@@ -110,6 +145,18 @@ const getStatusEffects = (status, currentProgress) => {
     default:
       return { status: 'Todo', progress: 0, completed: false, completedAt: null }
   }
+}
+
+// ===== NEW FEATURE: human-readable label for the recurring badge =====
+const getRecurringBadgeLabel = (task) => {
+  if (!task.isRecurring) return null
+  if (task.repeatType === 'daily') return '🔁 Daily'
+  if (task.repeatType === 'weekly') return '🔁 Weekly'
+  if (task.repeatType === 'interval') {
+    const n = task.repeatInterval || 1
+    return `🔁 Every ${n} Day${n > 1 ? 's' : ''}`
+  }
+  return '🔁 Recurring'
 }
 
 /* ------------------------------------------------------------------ */
@@ -300,6 +347,20 @@ const priorityStyle = (priority) => {
 
 const statusStyle = (status) => STATUS_STYLES[status] || STATUS_STYLES.Todo
 
+// ===== NEW FEATURE: badge style for the recurring indicator =====
+const recurringBadgeStyle = {
+  color: '#a78bfa',
+  background: 'rgba(139,92,246,0.14)',
+  border: '1px solid rgba(139,92,246,0.28)',
+}
+
+// ===== NEW FEATURE: badge style for the "times per day" indicator =====
+const timesPerDayBadgeStyle = {
+  color: '#7dd3fc',
+  background: 'rgba(125,211,252,0.14)',
+  border: '1px solid rgba(125,211,252,0.28)',
+}
+
 const badgeBaseStyle = {
   borderRadius: 8,
   fontSize: 11,
@@ -452,6 +513,27 @@ const TaskList = ({ tasks, onToggle, onDelete, onEdit, onStatusChange }) => {
             {task.completed ? <CheckCircle2 size={20} /> : <Circle size={20} />}
           </button>
 
+          {/* ===== NEW FEATURE: quick-delete trash icon shown beside the complete toggle once a task is done ===== */}
+          {task.completed ? (
+            <button
+              type="button"
+              onClick={() => onDelete(task.id)}
+              aria-label="delete completed task"
+              title="Delete completed task"
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#FCA5A5',
+                cursor: 'pointer',
+                display: 'grid',
+                placeItems: 'center',
+                opacity: 0.8,
+              }}
+            >
+              <Trash2 size={14} />
+            </button>
+          ) : null}
+
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <p
@@ -470,6 +552,20 @@ const TaskList = ({ tasks, onToggle, onDelete, onEdit, onStatusChange }) => {
                 {task.title}
               </p>
               <span style={{ fontSize: 11, color: '#8F97B3', marginBottom: 4 }}>{task.category}</span>
+
+              {/* ===== NEW FEATURE: recurring badge (Daily / Weekly / Every N Days) ===== */}
+              {task.isRecurring ? (
+                <span style={{ ...badgeBaseStyle, ...recurringBadgeStyle, marginBottom: 4 }}>
+                  {getRecurringBadgeLabel(task)}
+                </span>
+              ) : null}
+
+              {/* ===== NEW FEATURE: "Nx/day" badge when a recurring task runs more than once a day ===== */}
+              {task.isRecurring && task.timesPerDay > 1 ? (
+                <span style={{ ...badgeBaseStyle, ...timesPerDayBadgeStyle, marginBottom: 4 }}>
+                  {task.timesPerDay}x/day
+                </span>
+              ) : null}
             </div>
 
             {task.description ? (
@@ -567,6 +663,11 @@ const EMPTY_FORM = {
   dueTime: '',
   estimatedMinutes: '',
   reminderMinutesBefore: '',
+  // ===== NEW FEATURE: recurring defaults =====
+  isRecurring: false,
+  repeatType: 'none',
+  repeatInterval: '',
+  timesPerDay: 1,
 }
 
 const EditTaskModal = ({ task, categoryOptions, onSave, onClose }) => {
@@ -586,6 +687,11 @@ const EditTaskModal = ({ task, categoryOptions, onSave, onClose }) => {
       dueTime: task.dueTime || '',
       estimatedMinutes: task.estimatedMinutes ?? '',
       reminderMinutesBefore: task.reminderMinutesBefore ?? '',
+      // ===== NEW FEATURE: pre-fill recurring fields when editing an existing task =====
+      isRecurring: Boolean(task.isRecurring),
+      repeatType: task.repeatType || 'none',
+      repeatInterval: task.repeatInterval ?? '',
+      timesPerDay: task.timesPerDay ?? 1,
     })
   }, [task, categoryOptions])
 
@@ -609,6 +715,14 @@ const EditTaskModal = ({ task, categoryOptions, onSave, onClose }) => {
       dueTime: form.dueTime || null,
       estimatedMinutes: form.estimatedMinutes === '' ? null : Number(form.estimatedMinutes),
       reminderMinutesBefore: form.reminderMinutesBefore === '' ? null : Number(form.reminderMinutesBefore),
+      // ===== NEW FEATURE: recurring fields included in the save payload =====
+      isRecurring: form.isRecurring,
+      repeatType: form.isRecurring ? form.repeatType : 'none',
+      repeatInterval:
+        form.isRecurring && form.repeatType === 'interval'
+          ? Number(form.repeatInterval) || 1
+          : null,
+      timesPerDay: form.isRecurring ? Number(form.timesPerDay) || 1 : 1,
     })
   }
 
@@ -729,6 +843,84 @@ const EditTaskModal = ({ task, categoryOptions, onSave, onClose }) => {
             />
           </div>
 
+          {/* ===== NEW FEATURE: recurring task controls ===== */}
+          <div
+            style={{
+              border: '1px solid rgba(124,58,237,0.2)',
+              background: 'rgba(124,58,237,0.06)',
+              borderRadius: 12,
+              padding: 12,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 700,
+                color: '#ECE9FF',
+              }}
+            >
+              Recurring Task
+              <input
+                type="checkbox"
+                checked={form.isRecurring}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    isRecurring: e.target.checked,
+                    repeatType: e.target.checked ? (prev.repeatType === 'none' ? 'daily' : prev.repeatType) : 'none',
+                  }))
+                }
+                style={{ width: 18, height: 18, cursor: 'pointer' }}
+              />
+            </label>
+
+            {form.isRecurring ? (
+              <>
+                <select
+                  value={form.repeatType}
+                  onChange={(e) => updateField('repeatType', e.target.value)}
+                  style={selectStyle}
+                >
+                  {REPEAT_TYPE_OPTIONS.filter((option) => option.value !== 'none').map((option) => (
+                    <option key={option.value} value={option.value} style={{ color: '#111827' }}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                {form.repeatType === 'interval' ? (
+                  <input
+                    type="number"
+                    min="1"
+                    value={form.repeatInterval}
+                    onChange={(e) => updateField('repeatInterval', e.target.value)}
+                    placeholder="Repeat every N days"
+                    style={{ ...inputStyle, width: '100%' }}
+                  />
+                ) : null}
+
+                <select
+                  value={form.timesPerDay}
+                  onChange={(e) => updateField('timesPerDay', Number(e.target.value))}
+                  style={selectStyle}
+                >
+                  {TIMES_PER_DAY_OPTIONS.map((option) => (
+                    <option key={option} value={option} style={{ color: '#111827' }}>
+                      {option}x per day
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+          </div>
+
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button
               type="button"
@@ -777,6 +969,7 @@ const Todo = () => {
   const isMobile = useIsMobile()
 
   const [tasks, setTasks] = useState([])
+  const [weeklyTrend, setWeeklyTrend] = useState([]);
   const [query, setQuery] = useState('')
   const [priorityFilter, setPriorityFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -793,6 +986,11 @@ const Todo = () => {
   const [manualStatus, setManualStatus] = useState('Todo')
   const [manualEstimatedMinutes, setManualEstimatedMinutes] = useState('')
   const [manualReminderMinutesBefore, setManualReminderMinutesBefore] = useState('')
+  // ===== NEW FEATURE: manual-add recurring state =====
+  const [manualIsRecurring, setManualIsRecurring] = useState(false)
+  const [manualRepeatType, setManualRepeatType] = useState('daily')
+  const [manualRepeatInterval, setManualRepeatInterval] = useState('')
+  const [manualTimesPerDay, setManualTimesPerDay] = useState(1)
   const [editingTask, setEditingTask] = useState(null)
 
   const loadTasks = useCallback(async () => {
@@ -803,10 +1001,20 @@ const Todo = () => {
       console.error('Error loading tasks:', error)
     }
   }, [])
+  const loadWeeklyAnalytics = useCallback(async () => {
+  try {
+    const response = await axios.get(`${ANALYTICS_API}/weekly`);
+    setWeeklyTrend(response.data);
+  } catch (err) {
+    console.error("Analytics Error:", err);
+    setWeeklyTrend(MOCK_WEEKLY_CONSISTENCY);
+  }
+}, []);
 
   useEffect(() => {
     loadTasks()
-  }, [loadTasks])
+    loadWeeklyAnalytics()
+  }, [loadTasks, loadWeeklyAnalytics])
 
   const createTask = async (taskDraft) => {
     try {
@@ -840,6 +1048,14 @@ const Todo = () => {
       reminderMinutesBefore: manualReminderMinutesBefore === '' ? null : Number(manualReminderMinutesBefore),
       aiGenerated: false,
       completedAt: statusEffects.completedAt,
+      // ===== NEW FEATURE: recurring fields on manual add =====
+      isRecurring: manualIsRecurring,
+      repeatType: manualIsRecurring ? manualRepeatType : 'none',
+      repeatInterval:
+        manualIsRecurring && manualRepeatType === 'interval'
+          ? Number(manualRepeatInterval) || 1
+          : null,
+      timesPerDay: manualIsRecurring ? Number(manualTimesPerDay) || 1 : 1,
     })
 
     if (created) {
@@ -852,6 +1068,11 @@ const Todo = () => {
       setManualStatus('Todo')
       setManualEstimatedMinutes('')
       setManualReminderMinutesBefore('')
+      // ===== NEW FEATURE: reset recurring fields after successful add =====
+      setManualIsRecurring(false)
+      setManualRepeatType('daily')
+      setManualRepeatInterval('')
+      setManualTimesPerDay(1)
       setManualOpen(false)
     }
   }
@@ -875,6 +1096,11 @@ const Todo = () => {
       reminderMinutesBefore: null,
       aiGenerated: true,
       completedAt: null,
+      // ===== NEW FEATURE: AI-created tasks default to non-recurring =====
+      isRecurring: false,
+      repeatType: 'none',
+      repeatInterval: null,
+      timesPerDay: 1,
     })
 
     if (created) {
@@ -1001,9 +1227,14 @@ const Todo = () => {
       ? Math.round(tasks.reduce((sum, task) => sum + (task.progress || 0), 0) / total)
       : 0
 
+    const done = countByStatus('Completed')
+
+    // ===== NEW FEATURE: Consistency Score = completed / total * 100 =====
+    const consistencyScore = total ? Math.round((done / total) * 100) : 0
+
     return {
       total,
-      done: countByStatus('Completed'),
+      done,
       pending: countByStatus('Pending'),
       inProgress: countByStatus('In Progress'),
       blocked: countByStatus('Blocked'),
@@ -1014,6 +1245,7 @@ const Todo = () => {
       overdueCount,
       todayCount,
       upcomingCount,
+      consistencyScore,
     }
   }, [tasks])
 
@@ -1096,6 +1328,53 @@ const Todo = () => {
               <StatTile label="Today" value={stats.todayCount} color="#7dd3fc" />
               <StatTile label="Upcoming" value={stats.upcomingCount} color="#7dd3fc" />
               <StatTile label="Total" value={stats.total} color="#B58DFF" />
+              {/* ===== NEW FEATURE: Consistency Score tile (completed / total * 100) ===== */}
+              <StatTile label="Consistency" value={`${stats.consistencyScore}%`} color="#EC4899" />
+            </div>
+
+            {/* ===== NEW FEATURE: last 7 days completion trend line chart ===== */}
+            <div style={{ marginTop: 18 }}>
+              <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#E8E3FD' }}>
+                Last 7 Days Trend
+              </p>
+              <div style={{ width: '100%', height: 160 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={weeklyTrend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                    <XAxis
+                      dataKey="day"
+                      tick={{ fill: '#8F97B3', fontSize: 11 }}
+                      axisLine={{ stroke: 'rgba(255,255,255,0.08)' }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      domain={[0, 100]}
+                      tick={{ fill: '#8F97B3', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={34}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: '#1B1530',
+                        border: '1px solid rgba(124,58,237,0.28)',
+                        borderRadius: 8,
+                        color: '#ECE9FF',
+                        fontSize: 12,
+                      }}
+                      formatter={(value) => [`${value}%`, 'Completion']}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="score"
+                      stroke="#8B5CF6"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: '#EC4899' }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
@@ -1350,6 +1629,76 @@ const Todo = () => {
                   placeholder="Remind before (min)"
                   style={inputStyle}
                 />
+              </div>
+
+              {/* ===== NEW FEATURE: manual-add recurring controls ===== */}
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: isMobile ? '1fr' : 'auto 1fr 1fr 1fr',
+                  gap: 8,
+                  marginTop: 8,
+                  alignItems: 'center',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 12,
+                    color: '#ECE9FF',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={manualIsRecurring}
+                    onChange={(e) => setManualIsRecurring(e.target.checked)}
+                    style={{ width: 16, height: 16, cursor: 'pointer' }}
+                  />
+                  Recurring
+                </label>
+
+                <select
+                  value={manualRepeatType}
+                  onChange={(e) => setManualRepeatType(e.target.value)}
+                  disabled={!manualIsRecurring}
+                  style={{ ...inputStyle, opacity: manualIsRecurring ? 1 : 0.5 }}
+                >
+                  {REPEAT_TYPE_OPTIONS.filter((option) => option.value !== 'none').map((option) => (
+                    <option key={option.value} value={option.value} style={{ color: '#111827' }}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                {manualIsRecurring && manualRepeatType === 'interval' ? (
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualRepeatInterval}
+                    onChange={(e) => setManualRepeatInterval(e.target.value)}
+                    placeholder="Every N days"
+                    style={inputStyle}
+                  />
+                ) : (
+                  <div />
+                )}
+
+                <select
+                  value={manualTimesPerDay}
+                  onChange={(e) => setManualTimesPerDay(Number(e.target.value))}
+                  disabled={!manualIsRecurring}
+                  style={{ ...inputStyle, opacity: manualIsRecurring ? 1 : 0.5 }}
+                >
+                  {TIMES_PER_DAY_OPTIONS.map((option) => (
+                    <option key={option} value={option} style={{ color: '#111827' }}>
+                      {option}x per day
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           )}

@@ -99,3 +99,34 @@ class Todo(Base):
     reminder_minutes_before: Mapped[int] = mapped_column(
         default=60,
     )
+    # ==========================
+    # Recurring Task Fields
+    # ==========================
+
+    is_recurring: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
+
+    repeat_type: Mapped[str] = mapped_column(
+        String(20),
+        default="none",  # none, daily, weekly, interval
+    )
+
+    repeat_interval: Mapped[int] = mapped_column(
+        default=1,
+    )
+
+    times_per_day: Mapped[int] = mapped_column(
+        default=1,
+    )
+
+    last_generated_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    is_deleted: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+    )
