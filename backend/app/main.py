@@ -15,7 +15,7 @@ from app.resume.routes import router as resume_router
 from app.todo.routes import router as todo_router
 from app.todo.analytics_routes import router as analytics_router
 from app.database import init_db
-
+from app.todo.developer_routes import router as todo_dev_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialise resume DB tables on startup (no-op if DATABASE_URL not set)
@@ -34,6 +34,7 @@ app.include_router(dsa_router,    prefix="/dsa",    tags=["DSA"])
 app.include_router(resume_router, prefix="/resume", tags=["Resume"])
 app.include_router(todo_router, prefix="/todo", tags=["Todo"])
 app.include_router(analytics_router)
+app.include_router(todo_dev_router)
 
 # ─── CORS — allow frontend to call this API ────────────────────────
 app.add_middleware(

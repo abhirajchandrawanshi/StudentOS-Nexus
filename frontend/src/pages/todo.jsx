@@ -61,13 +61,13 @@ const TIMES_PER_DAY_OPTIONS = [1, 2, 3]
 // ===== NEW FEATURE: mock last-7-days consistency data for the line chart. =====
 // Used as a fallback while a real analytics endpoint isn't wired up yet.
 const MOCK_WEEKLY_CONSISTENCY = [
-  { day: 'Mon', score: 72 },
-  { day: 'Tue', score: 80 },
-  { day: 'Wed', score: 85 },
-  { day: 'Thu', score: 83 },
-  { day: 'Fri', score: 91 },
-  { day: 'Sat', score: 88 },
-  { day: 'Sun', score: 95 },
+  { day: 'Mon', completion: 72 },
+  { day: 'Tue', completion: 80 },
+  { day: 'Wed', completion: 85 },
+  { day: 'Thu', completion: 83 },
+  { day: 'Fri', completion: 91 },
+  { day: 'Sat', completion: 88 },
+  { day: 'Sun', completion: 95 },
 ]
 const ANALYTICS_API = "http://127.0.0.1:8000/todo/analytics";
 
@@ -1004,6 +1004,7 @@ const Todo = () => {
   const loadWeeklyAnalytics = useCallback(async () => {
   try {
     const response = await axios.get(`${ANALYTICS_API}/weekly`);
+     console.log(response.data);
     setWeeklyTrend(response.data);
   } catch (err) {
     console.error("Analytics Error:", err);
@@ -1337,8 +1338,16 @@ const Todo = () => {
               <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: '#E8E3FD' }}>
                 Last 7 Days Trend
               </p>
-              <div style={{ width: '100%', height: 160 }}>
-                <ResponsiveContainer width="100%" height="100%">
+              <div
+                style={{
+                  width: '100%',
+                  minWidth: 0,
+                  height: 160,
+                  minHeight: 160,
+                  position: 'relative',
+                }}
+              >
+                <ResponsiveContainer width="100%" height="100%" debounce={1}>
                   <LineChart data={weeklyTrend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                     <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
                     <XAxis
@@ -1366,7 +1375,7 @@ const Todo = () => {
                     />
                     <Line
                       type="monotone"
-                      dataKey="score"
+                      dataKey="completion"
                       stroke="#8B5CF6"
                       strokeWidth={2}
                       dot={{ r: 3, fill: '#EC4899' }}

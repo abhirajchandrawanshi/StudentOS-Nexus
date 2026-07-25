@@ -123,16 +123,17 @@ class AnalyticsRepository:
         completed_rows = (await self.db.execute(completed_stmt)).all()
         completed_by_day = {row.day: row.completed for row in completed_rows}
 
-        output: list[dict] = []
-        for offset in range(7):
-            day = start_date + timedelta(days=offset)
+        output = []
+        current_date = start_date
+        while current_date <= today:
             output.append(
                 {
-                    "date": day,
-                    "scheduled": scheduled_by_day.get(day, 0),
-                    "completed": completed_by_day.get(day, 0),
+                    "date": current_date,
+                    "scheduled": scheduled_by_day.get(current_date, 0),
+                    "completed": completed_by_day.get(current_date, 0),
                 }
             )
+            current_date += timedelta(days=1)
 
         return output
 
