@@ -1,14 +1,14 @@
-import httpx
-import logging
-from typing import Dict, Any, Optional
 import asyncio
+import logging
+from typing import Dict, Any,Optional
+import httpx
 
 logger = logging.getLogger("leetcode_service")
 
-# LeetCode GraphQL endpoint
+# LeetCode GraphQL Endpoint
 LEETCODE_GRAPHQL_URL = "https://leetcode.com/graphql"
 
-# Mock profile dataset for testing/offline usage
+# Mock profile dataset (used only if API fails)
 MOCK_PROFILES = {
     "abhiraj_chandrawanshi": {
         "username": "abhiraj_chandrawanshi",
@@ -46,89 +46,122 @@ MOCK_PROFILES = {
 
 async def fetch_leetcode_profile(username: str) -> Dict[str, Any]:
     """
-    Fetches LeetCode profile data using GraphQL API.
-    Falls back to mock data if API call fails or user not found.
+    Fetches a LeetCode profile using the official GraphQL endpoint.
+    Falls back to mock/default data if the API is unavailable.
     """
-    logger.info(f"Fetching LeetCode profile for: {username}")
-    
-    # Check if we have mock data for this user
-    if username in MOCK_PROFILES:
-        logger.info(f"Using mock profile for {username}")
-        return MOCK_PROFILES[username]
-    
-    # Try to fetch from LeetCode API
+
+    logger.info(f"Fetching LeetCode profile for '{username}'")
+
     query = """
     query getUserProfile($username: String!) {
-        matchedUser(username: $username) {
-            username
-            profile {
-                realName
-                userAvatar
-                ranking
-            }
-            submitStats: submitStatsGlobal {
-                acSubmissionNum {
-                    difficulty
-                    count
-                }
-            }
-            tagProblemCounts {
-                fundamental {
-                    tagSlug
-                    tagName
-                    problemsSolved
-                }
-                intermediate {
-                    tagSlug
-                    tagName
-                    problemsSolved
-                }
-                advanced {
-                    tagSlug
-                    tagName
-                    problemsSolved
-                }
-            }
+      matchedUser(username: $username) {
+        username
+
+        profile {
+          realName
+          userAvatar
+          ranking
         }
+
+        submitStats: submitStatsGlobal {
+          acSubmissionNum {
+            difficulty
+            count
+          }
+        }
+
+        tagProblemCounts {
+          fundamental {
+            tagSlug
+            tagName
+            problemsSolved
+          }
+          intermediate {
+            tagSlug
+            tagName
+            problemsSolved
+          }
+          advanced {
+            tagSlug
+            tagName
+            problemsSolved
+          }
+        }
+      }
     }
     """
-    
+
+    payload = {
+        "query": query,
+        "variables": {
+            "username": username
+        }
+    }
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+
+        async with httpx.AsyncClient(timeout=15.0) as client:
+
             response = await client.post(
                 LEETCODE_GRAPHQL_URL,
-                json={"query": query, "variables": {"username": username}},
+                json=payload,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Referer": "https://leetcode.com/"
+                    "Content-Type": "application/json"
                 }
             )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if "data" in data and data["data"].get("matchedUser"):
-                    logger.info(f"Successfully fetched LeetCode profile for {username}")
-                    return data["data"]["matchedUser"]
-                else:
-                    logger.warning(f"User {username} not found on LeetCode")
-                    # Return default mock data
-                    return create_default_profile(username)
-            else:
-                logger.warning(f"LeetCode API returned status {response.status_code}")
-                return create_default_profile(username)
-                
+
+        if response.status_code != 200:
+            logger.warning(
+                f"LeetCode returned HTTP {response.status_code}"
+            )
+            return MOCK_PROFILES.get(
+                username,
+                create_default_profile(username)
+            )
+
+        data = response.json()
+
+        if data.get("errors"):
+            logger.warning(
+                f"GraphQL returned errors: {data['errors']}"
+            )
+            return MOCK_PROFILES.get(
+                username,
+                create_default_profile(username)
+            )
+
+        matched_user = data.get("data", {}).get("matchedUser")
+
+        if matched_user is None:
+            logger.warning(f"User '{username}' not found.")
+            return create_default_profile(username)
+
+        logger.info(f"Successfully fetched profile for '{username}'")
+
+        return matched_user
+
     except httpx.TimeoutException:
-        logger.warning(f"LeetCode API timeout for user {username}")
-        return create_default_profile(username)
+        logger.warning("LeetCode request timed out.")
+
+    except httpx.RequestError as e:
+        logger.error(f"Network error: {e}")
+
     except Exception as e:
-        logger.error(f"Error fetching LeetCode profile: {e}")
-        return create_default_profile(username)
+        logger.exception(f"Unexpected error: {e}")
+
+    # Fallback
+    return MOCK_PROFILES.get(
+        username,
+        create_default_profile(username)
+    )
 
 
 def create_default_profile(username: str) -> Dict[str, Any]:
     """
-    Creates a default profile structure for users not found or API failures.
+    Creates a default profile when LeetCode data
+    cannot be retrieved.
     """
+
     return {
         "username": username,
         "profile": {
@@ -154,13 +187,16 @@ def create_default_profile(username: str) -> Dict[str, Any]:
 
 def get_user_profile(username: str):
     """
-    Synchronous wrapper for fetch_leetcode_profile for backward compatibility.
+    Synchronous wrapper for backward compatibility.
     """
-    # Use asyncio.run to execute async function in sync context
+
     try:
         loop = asyncio.get_event_loop()
+
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    
-    return loop.run_until_complete(fetch_leetcode_profile(username))
+
+    return loop.run_until_complete(
+        fetch_leetcode_profile(username)
+    )
