@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useBreakpoint } from '../hooks/useIsMobile'
+import api from '../services/api'
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -59,6 +60,19 @@ const RECOMMENDATIONS = [
   { id: 3, title: 'Kth Largest Element', tag: 'Heap',   diff: 'Medium', reason: 'Heap fundamentals — frequently asked',        url: 'https://leetcode.com/problems/kth-largest-element-in-an-array/' },
   { id: 4, title: 'Course Schedule',     tag: 'Graphs', diff: 'Medium', reason: 'Topological sort — high placement frequency', url: 'https://leetcode.com/problems/course-schedule/' },
 ]
+
+const getDashboardStats = (profileData) => {
+  const stats = profileData?.stats || {}
+  return {
+    totalSolved: Number(stats.all || 0),
+    easy: Number(stats.easy || 0),
+    medium: Number(stats.medium || 0),
+    hard: Number(stats.hard || 0),
+    streak: profileData?.recentSubmissions?.length ? Math.min(30, profileData.recentSubmissions.length) : 0,
+    ranking: profileData?.ranking || 0,
+    acceptance: profileData?.stats?.all ? Math.min(100, Math.round((profileData.stats.all / 400) * 100)) : 0,
+  }
+}
 
 // ── Problem Sheet Data ─────────────────────────────────────────────
 const PROBLEMS = [
@@ -149,13 +163,25 @@ const ReadinessRing = ({ value = 74 }) => {
 }
 
 // ── Problem Sheet ──────────────────────────────────────────────────
-const ProblemSheet = () => {
+const ProblemSheet = ({ profileData }) => {
   const bp = useBreakpoint()
   const isMobile = bp === 'mobile'
-  const [problems,     setProblems]     = useState(PROBLEMS)
+  const recentProblems = (profileData?.recentSubmissions || []).map((item, index) => ({
+    id: index + 1,
+    title: item.title || `Submission ${index + 1}`,
+    diff: 'Medium',
+    topic: 'Recent Activity',
+    acceptance: 0,
+    status: item.status?.toLowerCase() === 'accepted' ? 'solved' : 'attempted',
+  }))
+  const [problems, setProblems] = useState(recentProblems.length ? recentProblems : PROBLEMS)
   const [topicFilter,  setTopicFilter]  = useState('All')
   const [diffFilter,   setDiffFilter]   = useState('All')
   const [activeId,     setActiveId]     = useState(null)
+
+  useEffect(() => {
+    setProblems(recentProblems.length ? recentProblems : PROBLEMS)
+  }, [profileData])
 
   const filtered = problems.filter(p => {
     const topicOk = topicFilter === 'All' || p.topic === topicFilter
@@ -343,7 +369,7 @@ const ProblemSheet = () => {
 }
 
 // ── Analytics Tab ──────────────────────────────────────────────────
-const AnalyticsTab = () => {
+const AnalyticsTab = ({ profileData, loading, error }) => {
   const bp = useBreakpoint()
   const isMobile = bp === 'mobile'
   const isTablet = bp === 'tablet'
@@ -351,20 +377,48 @@ const AnalyticsTab = () => {
   const [sort,   setSort]   = useState('Weakest')
 
   const card = { background:'var(--background-card)', border:'1px solid var(--border)', borderRadius:'16px' }
+  const dashboardStats = getDashboardStats(profileData)
+  const topicCards = (profileData?.topics?.length ? profileData.topics : ALL_TOPICS).map((item) => ({
+    topic: item.topic || item.tagName || 'Topic',
+    solved: Number(item.solved || item.problemsSolved || 0),
+    total: Number(item.total || 40),
+    color: item.color || '#7C3AED',
+    difficulty: item.topic === 'DP' || item.topic === 'Graphs' ? 'hard' : 'medium',
+  }))
 
-  const filteredTopics = ALL_TOPICS
+  const radarData = topicCards.slice(0, 6).map((item) => ({
+    topic: item.topic,
+    score: Math.round((item.solved / item.total) * 100),
+  }))
+
+  const weakTopics = topicCards
+    .filter((item) => item.total > 0)
+    .map((item) => ({ ...item, pct: Math.round((item.solved / item.total) * 100) }))
+    .filter((item) => item.pct < 70)
+    .slice(0, 3)
+
+  const filteredTopics = topicCards
     .filter(t => filter === 'All' || t.difficulty === filter.toLowerCase())
     .sort((a, b) => sort === 'Weakest' ? (a.solved/a.total) - (b.solved/b.total) : b.solved - a.solved)
+
+  const recommendationItems = (profileData?.recommendations?.length ? profileData.recommendations : RECOMMENDATIONS).map((item) => ({
+    id: item.id || Math.random(),
+    title: item.title || item.problem || 'Recommendation',
+    tag: item.type || item.tag || 'Focus',
+    diff: item.action || item.diff || 'Practice',
+    reason: item.desc || item.reason || 'Focus on this weak area to improve your profile.',
+    url: item.path || item.url || 'https://leetcode.com',
+  }))
 
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       {/* Stat cards */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'16px' }}>
         {[
-          { icon:Trophy,    iconColor:'#fbbf24', bg:'rgba(251,191,36,0.1)',  label:'Total Solved',    value:STATS.totalSolved,                          sub:`Easy ${STATS.easy} · Med ${STATS.medium} · Hard ${STATS.hard}` },
-          { icon:Flame,     iconColor:'#f97316', bg:'rgba(249,115,22,0.1)',  label:'Current Streak',  value:`${STATS.streak}d`,                          sub:'Keep it going!' },
-          { icon:Target,    iconColor:'#4ade80', bg:'rgba(34,197,94,0.1)',   label:'Acceptance Rate', value:`${STATS.acceptance}%`,                      sub:'Above average' },
-          { icon:BarChart2, iconColor:'#a78bfa', bg:'rgba(124,58,237,0.1)', label:'Global Ranking',  value:`#${STATS.ranking.toLocaleString('en-IN')}`,  sub:'Top 15%' },
+          { icon:Trophy,    iconColor:'#fbbf24', bg:'rgba(251,191,36,0.1)',  label:'Total Solved',    value:dashboardStats.totalSolved,                          sub:`Easy ${dashboardStats.easy} · Med ${dashboardStats.medium} · Hard ${dashboardStats.hard}` },
+          { icon:Flame,     iconColor:'#f97316', bg:'rgba(249,115,22,0.1)',  label:'Current Streak',  value:`${dashboardStats.streak}d`,                          sub:'Keep it going!' },
+          { icon:Target,    iconColor:'#4ade80', bg:'rgba(34,197,94,0.1)',   label:'Acceptance Rate', value:`${dashboardStats.acceptance}%`,                      sub:'Above average' },
+          { icon:BarChart2, iconColor:'#a78bfa', bg:'rgba(124,58,237,0.1)', label:'Global Ranking',  value:dashboardStats.ranking ? `#${dashboardStats.ranking.toLocaleString('en-IN')}` : 'N/A',  sub:dashboardStats.ranking ? 'Live ranking from LeetCode' : 'No ranking available' },
         ].map(({ icon:Icon, iconColor, bg, label, value, sub }) => (
           <div key={label} style={{ ...card, padding:'20px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'12px' }}>
@@ -420,7 +474,7 @@ const AnalyticsTab = () => {
           <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'4px' }}>Topic mastery radar</p>
           <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'8px' }}>Skill distribution across core topics</p>
           <ResponsiveContainer width="100%" height={240}>
-            <RadarChart data={RADAR_DATA} margin={{ top:10, right:20, left:20, bottom:10 }}>
+            <RadarChart data={radarData} margin={{ top:10, right:20, left:20, bottom:10 }}>
               <PolarGrid stroke="rgba(124,58,237,0.15)"/>
               <PolarAngleAxis dataKey="topic" tick={{ fill:'var(--foreground-muted)', fontSize:12 }}/>
               <Radar name="Mastery" dataKey="score" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.2} strokeWidth={2}/>
@@ -431,7 +485,7 @@ const AnalyticsTab = () => {
 
         {/* Ring + Weak */}
         <div style={{ ...card, padding:'22px', display:'flex', flexDirection:'column', gap:'20px' }}>
-          <ReadinessRing value={74}/>
+          <ReadinessRing value={profileData?.placementReadiness || 74}/>
           <div style={{ height:'1px', background:'var(--border)' }}/>
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'14px' }}>
@@ -439,13 +493,13 @@ const AnalyticsTab = () => {
               <p style={{ fontSize:'14px', fontWeight:600, color:'var(--foreground)' }}>Weak topics</p>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-              {WEAK_TOPICS.map(({ topic, pct, reason }) => (
+              {weakTopics.map(({ topic, pct }) => (
                 <div key={topic} style={{ padding:'12px 14px', borderRadius:'12px', background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
                     <span style={{ fontSize:'13px', fontWeight:600, color:'#fbbf24' }}>{topic}</span>
                     <span style={{ fontSize:'12px', color:'#fbbf24' }}>{pct}% done</span>
                   </div>
-                  <p style={{ fontSize:'11px', color:'var(--foreground-muted)', lineHeight:1.5 }}>{reason}</p>
+                  <p style={{ fontSize:'11px', color:'var(--foreground-muted)', lineHeight:1.5 }}>Focus on this topic to improve your placement readiness.</p>
                 </div>
               ))}
             </div>
@@ -517,7 +571,7 @@ const AnalyticsTab = () => {
           </div>
           <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'16px' }}>Based on your weak topics and placement frequency</p>
           <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-            {RECOMMENDATIONS.map(({ id, title, tag, diff, reason, url }) => {
+            {recommendationItems.map(({ id, title, tag, diff, reason, url }) => {
               const ds = { Easy:{bg:'rgba(34,197,94,0.12)',color:'#4ade80',border:'rgba(34,197,94,0.25)'}, Medium:{bg:'rgba(245,158,11,0.12)',color:'#fbbf24',border:'rgba(245,158,11,0.25)'}, Hard:{bg:'rgba(239,68,68,0.12)',color:'#f87171',border:'rgba(239,68,68,0.25)'} }[diff]
               const ts = TAG_STYLE[tag] || { bg:'rgba(124,58,237,0.1)', color:'#a78bfa', border:'rgba(124,58,237,0.2)' }
               return (
@@ -556,8 +610,36 @@ const AnalyticsTab = () => {
 // ── Main DSA Page ──────────────────────────────────────────────────
 const DSA = () => {
   const [activeTab, setActiveTab] = useState('analytics')
+  const [usernameInput, setUsernameInput] = useState('')
+  const [profileData, setProfileData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const bp = useBreakpoint()
   const isMobile = bp === 'mobile'
+
+  const handleSearch = async (event) => {
+    event?.preventDefault()
+    const username = usernameInput.trim()
+
+    if (!username) {
+      setError('Please enter a LeetCode username.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+
+    try {
+      const response = await api.get(`/dsa/profile/${encodeURIComponent(username)}`)
+      setProfileData(response.data)
+      setUsernameInput(response.data.username || username)
+    } catch (err) {
+      setProfileData(null)
+      setError(err?.response?.data?.detail || 'Unable to fetch LeetCode profile right now.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="fade-up" style={{ maxWidth:'1600px', margin:'0 auto', display:'flex', flexDirection:'column', gap:'20px' }}>
@@ -586,6 +668,27 @@ const DSA = () => {
         </a>
       </div>
 
+      <form onSubmit={handleSearch} style={{ display:'flex', flexWrap:'wrap', gap:'10px', alignItems:'center', background:'var(--background-card)', border:'1px solid var(--border)', borderRadius:'14px', padding:'12px 14px' }}>
+        <input
+          value={usernameInput}
+          onChange={(e) => setUsernameInput(e.target.value)}
+          placeholder="Enter LeetCode username"
+          style={{ flex:'1 1 220px', minWidth:'220px', border:'1px solid var(--border)', borderRadius:'10px', padding:'10px 12px', background:'var(--background)', color:'var(--foreground)' }}
+        />
+        <button type="submit" disabled={loading} style={{ padding:'10px 16px', borderRadius:'10px', border:'none', background:'var(--primary)', color:'#fff', cursor:'pointer', fontWeight:600 }}>
+          {loading ? 'Fetching…' : 'Search'}
+        </button>
+      </form>
+
+      {error ? <p style={{ color:'#f87171', fontSize:'13px' }}>{error}</p> : null}
+      {profileData ? (
+        <div style={{ display:'flex', flexWrap:'wrap', gap:'10px', alignItems:'center', color:'var(--foreground-muted)', fontSize:'13px' }}>
+          <span>Showing live data for <strong>{profileData.username}</strong></span>
+          <span>• {profileData.stats?.all ?? 0} solved</span>
+          <span>• Contest rating {profileData.contest?.rating ?? 0}</span>
+        </div>
+      ) : null}
+
       {/* Tab switcher */}
       <div role="tablist" style={{
         display:'flex', gap:'4px', background:'var(--background-card)',
@@ -611,7 +714,7 @@ const DSA = () => {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'analytics' ? <AnalyticsTab /> : <ProblemSheet />}
+      {activeTab === 'analytics' ? <AnalyticsTab profileData={profileData} loading={loading} error={error} /> : <ProblemSheet profileData={profileData} />}
     </div>
   )
 }
