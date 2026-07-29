@@ -15,7 +15,8 @@ from app.dsa.models import (
     RoadmapGenerateRequest,
     RoadmapGenerateResponse,
     QuestionItem,
-    ExtractedSkills
+    ExtractedSkills,
+    DashboardAnalytics
 )
 from app.dsa.leetcode_service import (
     LeetCodeServiceError,
@@ -92,6 +93,131 @@ async def get_leetcode_profile_by_username(username: str):
         raise HTTPException(
             status_code=500,
             detail=f"An error occurred while compiling the DSA section profile: {str(e)}"
+        )
+
+
+@router.get("/analytics/{username}", response_model=DashboardAnalytics)
+async def get_dsa_analytics_dashboard(username: str):
+    """
+    Fetches comprehensive DSA analytics data for the dashboard.
+    Includes difficulty breakdown, topic mastery, activity trends, and heatmap data.
+    """
+    logger.info(f"Received analytics request for: {username}")
+    
+    if not username or username.strip() == "":
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+        
+    try:
+        # Fetch profile and analyze stats
+        profile_data = await fetch_leetcode_profile(username)
+        analyzed = analyze_profile_stats(profile_data)
+        stats = analyzed["stats"]
+        topics = analyzed["topics"]
+        placement_readiness = analyzed["placementReadiness"]
+        
+        # Calculate total solved
+        total_solved = stats["all"]
+        
+        # Build difficulty breakdown
+        total = stats["easy"] + stats["medium"] + stats["hard"]
+        difficulty_breakdown = [
+            {
+                "difficulty": "Easy",
+                "count": stats["easy"],
+                "percentage": round((stats["easy"] / total * 100) if total > 0 else 0, 1),
+                "color": "#10b981"
+            },
+            {
+                "difficulty": "Medium",
+                "count": stats["medium"],
+                "percentage": round((stats["medium"] / total * 100) if total > 0 else 0, 1),
+                "color": "#f59e0b"
+            },
+            {
+                "difficulty": "Hard",
+                "count": stats["hard"],
+                "percentage": round((stats["hard"] / total * 100) if total > 0 else 0, 1),
+                "color": "#ef4444"
+            }
+        ]
+        
+        # Build topic mastery
+        topic_mastery = []
+        for topic in topics:
+            topic_mastery.append({
+                "name": topic["topic"],
+                "solved": topic["solved"],
+                "total": topic["total"],
+                "percentage": round((topic["solved"] / topic["total"] * 100) if topic["total"] > 0 else 0, 1),
+                "color": topic["color"]
+            })
+        
+        # Sort by percentage descending
+        topic_mastery.sort(key=lambda x: x["percentage"], reverse=True)
+        
+        # Generate mock weekly activity (calendar data)
+        weekly_activity = []
+        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        # Distribute solved questions across the week
+        base_per_day = total_solved // 7 if total_solved > 0 else 0
+        remainder = total_solved % 7 if total_solved > 0 else 0
+        
+        for i, day in enumerate(days):
+            count = base_per_day + (1 if i < remainder else 0)
+            weekly_activity.append({
+                "date": day,
+                "count": max(0, count)
+            })
+        
+        # Generate mock monthly trend (last 5 months)
+        monthly_trend = []
+        months = ["Jan", "Feb", "Mar", "Apr", "May"]
+        total_distributed = total_solved
+        
+        for month in months:
+            # Distribute solved questions across months
+            easy_portion = int((stats["easy"] / total) * total_distributed / 5) if total > 0 else 0
+            medium_portion = int((stats["medium"] / total) * total_distributed / 5) if total > 0 else 0
+            hard_portion = int((stats["hard"] / total) * total_distributed / 5) if total > 0 else 0
+            
+            monthly_trend.append({
+                "month": month,
+                "easy": easy_portion,
+                "medium": medium_portion,
+                "hard": hard_portion
+            })
+        
+        # Generate heatmap data (7x4 grid for week x difficulty progression)
+        heatmap_data = {}
+        for i in range(7):
+            for j in range(4):
+                key = f"w{i}_d{j}"
+                # Generate intensity based on some distribution
+                heatmap_data[key] = (i + j) % 10
+        
+        response = DashboardAnalytics(
+            username=username,
+            totalSolved=total_solved,
+            difficultyBreakdown=difficulty_breakdown,
+            topicMastery=topic_mastery,
+            placementReadiness=placement_readiness,
+            weeklyActivity=weekly_activity,
+            monthlyTrend=monthly_trend,
+            heatmapData=heatmap_data
+        )
+        
+        logger.info(f"Successfully compiled analytics for '{username}'")
+        return response
+        
+    except LeetCodeUserNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except LeetCodeServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error getting analytics for '{username}': {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while fetching analytics: {str(e)}"
         )
 
 

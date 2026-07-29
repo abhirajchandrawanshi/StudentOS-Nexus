@@ -107,3 +107,39 @@ class RoadmapGenerateResponse(BaseModel):
     totalQuestions: int
     topicDistribution: Dict[str, int]
     questions: List[QuestionItem]
+
+
+# ─── ANALYTICS DASHBOARD SCHEMAS ───────────────────────────────────────
+
+class DifficultyBreakdown(BaseModel):
+    difficulty: str
+    count: int
+    percentage: float
+    color: str
+
+class TopicMastery(BaseModel):
+    name: str
+    solved: int
+    total: int
+    percentage: float
+    color: str
+
+class ActivityData(BaseModel):
+    date: str
+    count: int
+
+class DifficultyTrendData(BaseModel):
+    month: str
+    easy: int
+    medium: int
+    hard: int
+
+class DashboardAnalytics(BaseModel):
+    username: str
+    totalSolved: int
+    difficultyBreakdown: List[DifficultyBreakdown]
+    topicMastery: List[TopicMastery]
+    placementReadiness: float
+    weeklyActivity: List[ActivityData]
+    monthlyTrend: List[DifficultyTrendData]
+    heatmapData: Dict[str, int]
