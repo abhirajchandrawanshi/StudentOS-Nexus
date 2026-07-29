@@ -1,202 +1,120 @@
-import asyncio
 import logging
-from typing import Dict, Any,Optional
-import httpx
+from typing import Dict, Any
+
+from app.dsa.graphql_client import execute_query
+from app.dsa.graphql_queries import PROFILE_QUERY
+from app.dsa.graphql_parser import merge_profile
 
 logger = logging.getLogger("leetcode_service")
 
-# LeetCode GraphQL Endpoint
-LEETCODE_GRAPHQL_URL = "https://leetcode.com/graphql"
 
-# Mock profile dataset (used only if API fails)
-MOCK_PROFILES = {
-    "abhiraj_chandrawanshi": {
-        "username": "abhiraj_chandrawanshi",
-        "profile": {
-            "realName": "Abhiraj Chandrawanshi",
-            "userAvatar": "https://assets.leetcode.com/users/abhiraj_chandrawanshi/avatar_1234567890.png",
-            "ranking": 12345
-        },
-        "submitStats": {
-            "acSubmissionNum": [
-                {"difficulty": "All", "count": 87},
-                {"difficulty": "Easy", "count": 45},
-                {"difficulty": "Medium", "count": 35},
-                {"difficulty": "Hard", "count": 7}
-            ]
-        },
-        "tagProblemCounts": {
-            "fundamental": [
-                {"tagSlug": "array", "tagName": "Array", "problemsSolved": 12},
-                {"tagSlug": "string", "tagName": "String", "problemsSolved": 8},
-                {"tagSlug": "hash-table", "tagName": "Hash Table", "problemsSolved": 10}
-            ],
-            "intermediate": [
-                {"tagSlug": "binary-search", "tagName": "Binary Search", "problemsSolved": 5},
-                {"tagSlug": "dynamic-programming", "tagName": "Dynamic Programming", "problemsSolved": 6}
-            ],
-            "advanced": [
-                {"tagSlug": "graph", "tagName": "Graph", "problemsSolved": 4},
-                {"tagSlug": "tree", "tagName": "Tree", "problemsSolved": 7}
-            ]
-        }
-    }
-}
+class LeetCodeServiceError(Exception):
+    """Raised when live LeetCode data cannot be fetched safely."""
+
+
+class LeetCodeUserNotFoundError(LeetCodeServiceError):
+    """Raised when LeetCode returns no matched user for a username."""
 
 
 async def fetch_leetcode_profile(username: str) -> Dict[str, Any]:
     """
-    Fetches a LeetCode profile using the official GraphQL endpoint.
-    Falls back to mock/default data if the API is unavailable.
+    Fetches a user's LeetCode profile and converts it into
+    the standardized StudentOS profile.
     """
 
     logger.info(f"Fetching LeetCode profile for '{username}'")
 
-    query = """
-    query getUserProfile($username: String!) {
-      matchedUser(username: $username) {
-        username
-
-        profile {
-          realName
-          userAvatar
-          ranking
-        }
-
-        submitStats: submitStatsGlobal {
-          acSubmissionNum {
-            difficulty
-            count
-          }
-        }
-
-        tagProblemCounts {
-          fundamental {
-            tagSlug
-            tagName
-            problemsSolved
-          }
-          intermediate {
-            tagSlug
-            tagName
-            problemsSolved
-          }
-          advanced {
-            tagSlug
-            tagName
-            problemsSolved
-          }
-        }
-      }
-    }
-    """
-
-    payload = {
-        "query": query,
-        "variables": {
-            "username": username
-        }
-    }
-
     try:
+        # Execute GraphQL query
+        response = await execute_query(
+            PROFILE_QUERY,
+            {"username": username}
+        )
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-
-            response = await client.post(
-                LEETCODE_GRAPHQL_URL,
-                json=payload,
-                headers={
-                    "Content-Type": "application/json"
-                }
-            )
-
-        if response.status_code != 200:
-            logger.warning(
-                f"LeetCode returned HTTP {response.status_code}"
-            )
-            return MOCK_PROFILES.get(
+        # Handle GraphQL errors
+        if response.get("errors"):
+            logger.error(
+                "GraphQL Error while fetching '%s': %s",
                 username,
-                create_default_profile(username)
+                response["errors"]
             )
+            raise LeetCodeServiceError("LeetCode returned GraphQL errors.")
 
-        data = response.json()
-
-        if data.get("errors"):
-            logger.warning(
-                f"GraphQL returned errors: {data['errors']}"
-            )
-            return MOCK_PROFILES.get(
-                username,
-                create_default_profile(username)
-            )
-
-        matched_user = data.get("data", {}).get("matchedUser")
+        # Extract matched user
+        matched_user = (
+            response
+            .get("data", {})
+            .get("matchedUser")
+        )
 
         if matched_user is None:
-            logger.warning(f"User '{username}' not found.")
-            return create_default_profile(username)
+            logger.warning(
+                "LeetCode user '%s' not found.",
+                username
+            )
+            raise LeetCodeUserNotFoundError(
+                f"LeetCode user '{username}' was not found."
+            )
 
-        logger.info(f"Successfully fetched profile for '{username}'")
+        # Convert raw GraphQL response to StudentOS model
+        profile = merge_profile(matched_user)
 
-        return matched_user
+        logger.info(
+            "Successfully fetched profile for '%s'",
+            username
+        )
 
-    except httpx.TimeoutException:
-        logger.warning("LeetCode request timed out.")
+        logger.debug("Parsed Profile: %s", profile)
 
-    except httpx.RequestError as e:
-        logger.error(f"Network error: {e}")
+        return profile
 
     except Exception as e:
-        logger.exception(f"Unexpected error: {e}")
+        if isinstance(e, LeetCodeServiceError):
+            raise
 
-    # Fallback
-    return MOCK_PROFILES.get(
-        username,
-        create_default_profile(username)
-    )
+        logger.exception(
+            "Failed to fetch profile for '%s': %s",
+            username,
+            e
+        )
+
+        raise LeetCodeServiceError(
+            "Could not fetch live LeetCode profile. Please try again."
+        ) from e
 
 
 def create_default_profile(username: str) -> Dict[str, Any]:
     """
-    Creates a default profile when LeetCode data
-    cannot be retrieved.
+    Returns a default StudentOS profile when
+    LeetCode data cannot be fetched.
     """
 
     return {
         "username": username,
+
         "profile": {
             "realName": username,
-            "userAvatar": None,
+            "avatar": None,
             "ranking": 0
         },
-        "submitStats": {
-            "acSubmissionNum": [
-                {"difficulty": "All", "count": 0},
-                {"difficulty": "Easy", "count": 0},
-                {"difficulty": "Medium", "count": 0},
-                {"difficulty": "Hard", "count": 0}
-            ]
+
+        "stats": {
+            "all": 0,
+            "easy": 0,
+            "medium": 0,
+            "hard": 0
         },
-        "tagProblemCounts": {
-            "fundamental": [],
-            "intermediate": [],
-            "advanced": []
-        }
+
+        "topics": [],
+
+        "contest": {
+            "rating": 0,
+            "globalRanking": 0,
+            "topPercentage": 0,
+            "contestsAttended": 0
+        },
+
+        "recentSubmissions": [],
+
+        "submissionCalendar": {}
     }
-
-
-def get_user_profile(username: str):
-    """
-    Synchronous wrapper for backward compatibility.
-    """
-
-    try:
-        loop = asyncio.get_event_loop()
-
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    return loop.run_until_complete(
-        fetch_leetcode_profile(username)
-    )

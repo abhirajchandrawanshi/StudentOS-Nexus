@@ -17,15 +17,15 @@ from app.dsa.models import (
     QuestionItem,
     ExtractedSkills
 )
-from app.dsa.leetcode_service import fetch_leetcode_profile
+from app.dsa.leetcode_service import (
+    LeetCodeServiceError,
+    LeetCodeUserNotFoundError,
+    fetch_leetcode_profile,
+)
 from app.dsa.analytics_engine import analyze_profile_stats
 from app.dsa.recommendation_engine import (
     generate_dsa_recommendations,
     generate_dynamic_leetcode_sheet
-)
-from app.dsa.ai_gap_analyzer import (
-    parse_resume_skills_with_ai,
-    analyze_gap_and_priorities
 )
 from app.dsa.utils.excel_generator import generate_dsa_spreadsheet_bytes
 
@@ -53,9 +53,11 @@ async def get_leetcode_profile_by_username(username: str):
     try:
         # 1. Fetch raw data from LeetCode public API (or fallback mock representation)
         profile_data = await fetch_leetcode_profile(username)
+        logger.info("Parser output stats for '%s': %s", username, profile_data.get("stats"))
         
         # 2. Extract difficulty stats, calculate readiness score, and aggregate curriculum tracks
         analyzed = analyze_profile_stats(profile_data)
+        logger.info("Analytics output stats for '%s': %s", username, analyzed.get("stats"))
         
         # 3. Generate actionable, visual recommendations
         recommendations = generate_dsa_recommendations(analyzed)
@@ -64,17 +66,27 @@ async def get_leetcode_profile_by_username(username: str):
         response = DSAProfileResponse(
             username=profile_data.get("username", username),
             realName=profile_data.get("profile", {}).get("realName") or username,
-            avatar=profile_data.get("profile", {}).get("userAvatar"),
+            avatar=profile_data.get("profile", {}).get("avatar"),
             ranking=profile_data.get("profile", {}).get("ranking"),
             stats=analyzed["stats"],
             placementReadiness=analyzed["placementReadiness"],
             topics=analyzed["topics"],
-            recommendations=recommendations
+            recommendations=recommendations,
+            contest=profile_data.get("contest", {}),
+            recentSubmissions=profile_data.get("recentSubmissions", []),
+            submissionCalendar=profile_data.get("submissionCalendar", {})
         )
+        logger.info("Final response stats for '%s': %s", username, response.stats.model_dump())
         
         logger.info(f"Successfully compiled DSA profile payload for '{username}'")
         return response
         
+    except LeetCodeUserNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except LeetCodeServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
     except Exception as e:
         logger.error(f"Error handling profile request for '{username}': {e}", exc_info=True)
         raise HTTPException(
@@ -96,6 +108,8 @@ async def upload_resume_and_extract_skills(file: UploadFile = File(...)):
         
     # Write to a temporary file safely
     try:
+        from app.dsa.ai_gap_analyzer import parse_resume_skills_with_ai
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             shutil.copyfileobj(file.file, tmp)
             tmp_path = tmp.name
@@ -138,6 +152,8 @@ async def trigger_ai_gap_analysis(request: GapAnalysisRequest):
     logger.info(f"Received gap analysis request for: {request.username}")
     
     try:
+        from app.dsa.ai_gap_analyzer import analyze_gap_and_priorities
+
         # 1. Fetch LeetCode stats to evaluate weakness percentages
         profile_data = await fetch_leetcode_profile(request.username)
         analyzed = analyze_profile_stats(profile_data)

@@ -4,20 +4,19 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import shutil
 
-from app.rag.retriever import retrieve_chunks
-from app.rag.generator import generate_answer
-from app.rag.pdf_loader import extract_text
-from app.rag.chunker import chunk_text
-from app.rag.embedder import create_embeddings
-from app.rag.vectordb import store_chunks
 from app.dsa.routes import router as dsa_router
-from app.resume.routes import router as resume_router
-from app.resume.repository import init_db
+
+try:
+    from app.resume.routes import router as resume_router
+    from app.resume.repository import init_db
+except Exception:
+    resume_router = None
+    init_db = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialise resume DB tables on startup (no-op if DATABASE_URL not set)
-    await init_db()
+    if init_db is not None:
+        await init_db()
     yield
 
 app = FastAPI(
@@ -28,8 +27,9 @@ app = FastAPI(
 )
 
 # Include DSA Router
-app.include_router(dsa_router,    prefix="/dsa",    tags=["DSA"])
-app.include_router(resume_router, prefix="/resume", tags=["Resume"])
+app.include_router(dsa_router, prefix="/dsa", tags=["DSA"])
+if resume_router is not None:
+    app.include_router(resume_router, prefix="/resume", tags=["Resume"])
 
 # ─── CORS — allow frontend to call this API ────────────────────────
 app.add_middleware(
@@ -55,6 +55,13 @@ def home():
 
 @app.post("/upload")
 def upload_pdf(file: UploadFile = File(...)):
+    try:
+        from app.rag.pdf_loader import extract_text
+        from app.rag.chunker import chunk_text
+        from app.rag.embedder import create_embeddings
+        from app.rag.vectordb import store_chunks
+    except Exception as exc:
+        raise RuntimeError("RAG dependencies are not available in the current environment") from exc
 
     # Save uploaded PDF
     file_path = f"app/uploads/{file.filename}"
@@ -85,6 +92,11 @@ class QuestionRequest(BaseModel):
 
 @app.post("/ask")
 def ask_question(request: QuestionRequest):
+    try:
+        from app.rag.retriever import retrieve_chunks
+        from app.rag.generator import generate_answer
+    except Exception as exc:
+        raise RuntimeError("RAG dependencies are not available in the current environment") from exc
 
     # User question
     query = request.question

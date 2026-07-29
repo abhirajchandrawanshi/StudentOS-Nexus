@@ -27,6 +27,18 @@ class DSARecommendation(BaseModel):
     action: str
     path: str
 
+class ContestStats(BaseModel):
+    rating: int = 0
+    globalRanking: int = 0
+    topPercentage: int = 0
+    contestsAttended: int = 0
+
+class RecentSubmission(BaseModel):
+    title: Optional[str] = None
+    titleSlug: Optional[str] = None
+    timestamp: Optional[int] = None
+    status: Optional[str] = None
+
 class DSAProfileResponse(BaseModel):
     username: str
     realName: Optional[str] = None
@@ -36,6 +48,9 @@ class DSAProfileResponse(BaseModel):
     placementReadiness: float
     topics: List[TopicStats]
     recommendations: List[DSARecommendation]
+    contest: ContestStats = ContestStats()
+    recentSubmissions: List[RecentSubmission] = []
+    submissionCalendar: Dict[str, int] = {}
 
 
 # ─── NEW SCHEMAS (AI Gap Analysis & Sheet Generator) ──────────────────
