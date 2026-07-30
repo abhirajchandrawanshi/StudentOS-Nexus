@@ -76,7 +76,11 @@ async def get_leetcode_profile_by_username(username: str):
             recommendations=recommendations,
             contest=profile_data.get("contest", {}),
             recentSubmissions=profile_data.get("recentSubmissions", []),
-            submissionCalendar=profile_data.get("submissionCalendar", {})
+            submissionCalendar=profile_data.get("submissionCalendar", {}),
+            distribution=analyzed.get("distribution", {}),
+            readiness=analyzed.get("readiness", {}),
+            topicAnalytics=analyzed.get("topicAnalytics", {}),
+            learningRoadmap=analyzed.get("learningRoadmap", [])
         )
         logger.info("Final response stats for '%s': %s", username, response.stats.model_dump())
         
@@ -118,13 +122,19 @@ async def get_dsa_analytics_dashboard(username: str):
         # Fetch and analyze profile data
         profile_data = await fetch_leetcode_profile(username)
         analyzed = analyze_profile_stats(profile_data)
+        recommendations = generate_dsa_recommendations(analyzed)
         
         # Process analytics using the service
         analytics_data = AnalyticsProcessor.process_analytics(
             username=username,
             stats=analyzed["stats"],
             topics=analyzed["topics"],
-            placement_readiness=analyzed["placementReadiness"]
+            placement_readiness=analyzed["placementReadiness"],
+            recommendations=recommendations,
+            readiness=analyzed.get("readiness", {}),
+            distribution=analyzed.get("distribution", {}),
+            topic_analytics=analyzed.get("topicAnalytics", {}),
+            learning_roadmap=analyzed.get("learningRoadmap", [])
         )
         
         # Convert to response model

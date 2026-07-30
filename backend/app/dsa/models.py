@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict
+from typing import Any, List, Optional, Dict
 
 # ─── EXISTING SCHEMAS (Dashboard profile fetch) ───────────────────────
 
@@ -14,6 +14,9 @@ class TopicStats(BaseModel):
     solved: int
     total: int
     color: str
+    percentage: Optional[float] = None
+    rank: Optional[int] = None
+    status: Optional[str] = None
 
 class DSARecommendation(BaseModel):
     id: int
@@ -51,6 +54,10 @@ class DSAProfileResponse(BaseModel):
     contest: ContestStats = ContestStats()
     recentSubmissions: List[RecentSubmission] = []
     submissionCalendar: Dict[str, int] = {}
+    distribution: Optional[Dict[str, float]] = None
+    readiness: Optional[Dict[str, Any]] = None
+    topicAnalytics: Optional[Dict[str, Any]] = None
+    learningRoadmap: Optional[List[Dict[str, Any]]] = None
 
 
 # ─── NEW SCHEMAS (AI Gap Analysis & Sheet Generator) ──────────────────
@@ -138,8 +145,13 @@ class DashboardAnalytics(BaseModel):
     username: str
     totalSolved: int
     difficultyBreakdown: List[DifficultyBreakdown]
+    problemSolvingDistribution: Dict[str, float] = {}
     topicMastery: List[TopicMastery]
     placementReadiness: float
+    readiness: Optional[Dict[str, Any]] = None
+    topicAnalytics: Optional[Dict[str, Any]] = None
+    recommendations: List[DSARecommendation] = []
+    learningRoadmap: List[Dict[str, Any]] = []
     weeklyActivity: List[ActivityData]
     monthlyTrend: List[DifficultyTrendData]
     heatmapData: Dict[str, int]
