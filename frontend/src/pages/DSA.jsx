@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useBreakpoint } from '../hooks/useIsMobile'
 import api from '../services/api'
 import {
-  RadarChart, Radar, PolarGrid, PolarAngleAxis,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell,
+  Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+  LineChart, Line,
 } from 'recharts'
 import {
   Code2, Trophy, Flame, Target, BarChart2,
@@ -63,16 +63,43 @@ const RECOMMENDATIONS = [
 
 const getDashboardStats = (profileData) => {
   const stats = profileData?.stats || {}
+  const submissionDays = Object.keys(profileData?.submissionCalendar || {}).filter(key => Number(profileData.submissionCalendar[key]) > 0).length
   return {
     totalSolved: Number(stats.all || 0),
     easy: Number(stats.easy || 0),
     medium: Number(stats.medium || 0),
     hard: Number(stats.hard || 0),
-    streak: profileData?.recentSubmissions?.length ? Math.min(30, profileData.recentSubmissions.length) : 0,
+    activeDays: submissionDays || (profileData?.recentSubmissions?.length ? Math.min(30, profileData.recentSubmissions.length) : 0),
     ranking: profileData?.ranking || 0,
-    acceptance: profileData?.stats?.all ? Math.min(100, Math.round((profileData.stats.all / 400) * 100)) : 0,
+    acceptance: profileData?.acceptanceRate ?? null,
+    contestRating: profileData?.contest?.rating || 0,
   }
 }
+
+const buildSubmissionSeries = (calendar = {}, monthlyTrend = []) => {
+  const entries = Object.entries(calendar || {})
+    .map(([timestamp, count]) => ({
+      ts: Number(timestamp) * 1000,
+      count: Number(count || 0),
+    }))
+    .filter(item => Number.isFinite(item.ts))
+    .sort((a, b) => a.ts - b.ts)
+    .slice(-30)
+
+  if (entries.length) {
+    return entries.map(item => ({
+      label: new Date(item.ts).toLocaleDateString('en-IN', { month:'short', day:'numeric' }),
+      solved: item.count,
+    }))
+  }
+
+  return (monthlyTrend || []).map(item => ({
+    label: item.month,
+    solved: Number(item.easy || 0) + Number(item.medium || 0) + Number(item.hard || 0),
+  }))
+}
+
+const formatTopicName = (topic) => topic === 'DP' ? 'Dynamic Programming' : topic
 
 // ── Problem Sheet Data ─────────────────────────────────────────────
 const PROBLEMS = [
@@ -120,16 +147,6 @@ const BarTip = ({ active, payload, label }) => {
     <div style={{ background:'var(--background-card)', border:'1px solid var(--border)', borderRadius:'10px', padding:'8px 12px', boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
       <p style={{ fontSize:'12px', color:'var(--foreground-muted)', marginBottom:'3px' }}>{label}</p>
       <p style={{ fontSize:'14px', fontWeight:600, color:'var(--foreground)' }}>{payload[0].value} solved</p>
-    </div>
-  )
-}
-
-const RadarTip = ({ active, payload }) => {
-  if (!active || !payload?.length) return null
-  return (
-    <div style={{ background:'var(--background-card)', border:'1px solid var(--border)', borderRadius:'10px', padding:'8px 12px', boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
-      <p style={{ fontSize:'12px', color:'var(--foreground-muted)', marginBottom:'3px' }}>{payload[0].payload.topic}</p>
-      <p style={{ fontSize:'14px', fontWeight:600, color:'var(--foreground)' }}>{payload[0].value}% mastery</p>
     </div>
   )
 }
@@ -369,7 +386,7 @@ const ProblemSheet = ({ profileData }) => {
 }
 
 // ── Analytics Tab ──────────────────────────────────────────────────
-const AnalyticsTab = ({ profileData, loading, error }) => {
+const AnalyticsTab = ({ profileData, analyticsData, loading, error }) => {
   const bp = useBreakpoint()
   const isMobile = bp === 'mobile'
   const isTablet = bp === 'tablet'
@@ -377,31 +394,44 @@ const AnalyticsTab = ({ profileData, loading, error }) => {
   const [sort,   setSort]   = useState('Weakest')
 
   const card = { background:'var(--background-card)', border:'1px solid var(--border)', borderRadius:'16px' }
-  const dashboardStats = getDashboardStats(profileData)
-  const topicCards = (profileData?.topics?.length ? profileData.topics : ALL_TOPICS).map((item) => ({
-    topic: item.topic || item.tagName || 'Topic',
+  const dashboardStats = getDashboardStats(profileData || {})
+  const hasData = Boolean(profileData || analyticsData)
+  const topicSource = analyticsData?.topicMastery?.length ? analyticsData.topicMastery : profileData?.topics
+  const topicCards = (topicSource || []).map((item) => ({
+    topic: formatTopicName(item.name || item.topic || item.tagName || 'Topic'),
     solved: Number(item.solved || item.problemsSolved || 0),
     total: Number(item.total || 40),
     color: item.color || '#7C3AED',
-    difficulty: item.topic === 'DP' || item.topic === 'Graphs' ? 'hard' : 'medium',
+    percentage: Number(item.percentage ?? (item.total ? (item.solved / item.total) * 100 : 0)),
+    difficulty: ['Dynamic Programming', 'Graphs', 'Backtracking'].includes(formatTopicName(item.name || item.topic)) ? 'hard' : ['Trees', 'Binary Search', 'Linked List'].includes(formatTopicName(item.name || item.topic)) ? 'medium' : 'easy',
   }))
 
-  const radarData = topicCards.slice(0, 6).map((item) => ({
-    topic: item.topic,
-    score: Math.round((item.solved / item.total) * 100),
-  }))
+  const difficultyBreakdown = analyticsData?.difficultyBreakdown?.length
+    ? analyticsData.difficultyBreakdown
+    : [
+        { difficulty:'Easy', count:dashboardStats.easy, color:'#4ade80' },
+        { difficulty:'Medium', count:dashboardStats.medium, color:'#fbbf24' },
+        { difficulty:'Hard', count:dashboardStats.hard, color:'#f87171' },
+      ]
+  const totalDifficulty = difficultyBreakdown.reduce((sum, item) => sum + Number(item.count || 0), 0)
+  const pieData = difficultyBreakdown.map(item => ({ name:item.difficulty, value:Number(item.count || 0), color:item.color }))
+  const weeklyData = (analyticsData?.weeklyActivity || WEEKLY).map(item => ({ day:item.date || item.day, solved:Number(item.count ?? item.solved ?? 0) }))
+  const activityLine = buildSubmissionSeries(profileData?.submissionCalendar, analyticsData?.monthlyTrend)
+  const heatmapEntries = Object.entries(analyticsData?.heatmapData || {}).slice(0, 28)
 
-  const weakTopics = topicCards
-    .filter((item) => item.total > 0)
-    .map((item) => ({ ...item, pct: Math.round((item.solved / item.total) * 100) }))
-    .filter((item) => item.pct < 70)
-    .slice(0, 3)
+  const rankedTopics = analyticsData?.topicAnalytics?.rankedTopics || topicCards
+  const strongestTopics = (analyticsData?.topicAnalytics?.strongestTopics || rankedTopics.slice(0, 3)).map(item => ({ ...item, topic: formatTopicName(item.topic || item.name) }))
+  const weakTopics = (analyticsData?.topicAnalytics?.weakestTopics || [...topicCards].sort((a, b) => a.percentage - b.percentage).slice(0, 3))
+    .map(item => ({ ...item, topic: formatTopicName(item.topic || item.name), pct: Math.round(item.percentage ?? (item.total ? (item.solved / item.total) * 100 : 0)) }))
+  const mostPracticedTopic = [...topicCards].sort((a, b) => b.solved - a.solved)[0]
+  const leastPracticedTopic = [...topicCards].sort((a, b) => a.solved - b.solved)[0]
+  const mostSolvedDifficulty = [...difficultyBreakdown].sort((a, b) => Number(b.count || 0) - Number(a.count || 0))[0]?.difficulty || 'N/A'
 
   const filteredTopics = topicCards
     .filter(t => filter === 'All' || t.difficulty === filter.toLowerCase())
-    .sort((a, b) => sort === 'Weakest' ? (a.solved/a.total) - (b.solved/b.total) : b.solved - a.solved)
+    .sort((a, b) => sort === 'Weakest' ? a.percentage - b.percentage : b.solved - a.solved)
 
-  const recommendationItems = (profileData?.recommendations?.length ? profileData.recommendations : RECOMMENDATIONS).map((item) => ({
+  const recommendationItems = ((analyticsData?.recommendations?.length ? analyticsData.recommendations : profileData?.recommendations) || []).map((item) => ({
     id: item.id || Math.random(),
     title: item.title || item.problem || 'Recommendation',
     tag: item.type || item.tag || 'Focus',
@@ -410,15 +440,41 @@ const AnalyticsTab = ({ profileData, loading, error }) => {
     url: item.path || item.url || 'https://leetcode.com',
   }))
 
+  if (loading) {
+    return (
+      <div style={{ ...card, padding:'28px', color:'var(--foreground-muted)' }}>
+        Loading LeetCode analytics...
+      </div>
+    )
+  }
+
+  if (!hasData) {
+    return (
+      <div style={{ ...card, padding:'28px', display:'flex', flexDirection:'column', gap:'8px' }}>
+        <p style={{ fontSize:'16px', fontWeight:700, color:'var(--foreground)', margin:0 }}>Search a LeetCode username to view analytics</p>
+        <p style={{ fontSize:'13px', color:'var(--foreground-muted)', margin:0 }}>The dashboard will show difficulty stats, topic charts, activity trends, and readiness insights.</p>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div style={{ ...card, padding:'22px', borderColor:'rgba(248,113,113,0.35)' }}>
+        <p style={{ color:'#f87171', fontSize:'13px', margin:0 }}>{error}</p>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       {/* Stat cards */}
-      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(4,1fr)', gap:'16px' }}>
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2,1fr)' : 'repeat(5,1fr)', gap:'16px' }}>
         {[
           { icon:Trophy,    iconColor:'#fbbf24', bg:'rgba(251,191,36,0.1)',  label:'Total Solved',    value:dashboardStats.totalSolved,                          sub:`Easy ${dashboardStats.easy} · Med ${dashboardStats.medium} · Hard ${dashboardStats.hard}` },
-          { icon:Flame,     iconColor:'#f97316', bg:'rgba(249,115,22,0.1)',  label:'Current Streak',  value:`${dashboardStats.streak}d`,                          sub:'Keep it going!' },
-          { icon:Target,    iconColor:'#4ade80', bg:'rgba(34,197,94,0.1)',   label:'Acceptance Rate', value:`${dashboardStats.acceptance}%`,                      sub:'Above average' },
+          { icon:Flame,     iconColor:'#f97316', bg:'rgba(249,115,22,0.1)',  label:'Active Days',     value:dashboardStats.activeDays,                            sub:'From submission calendar' },
+          { icon:Target,    iconColor:'#4ade80', bg:'rgba(34,197,94,0.1)',   label:'Acceptance Rate', value:dashboardStats.acceptance === null ? 'N/A' : `${dashboardStats.acceptance}%`, sub:dashboardStats.acceptance === null ? 'Not provided by profile API' : 'From LeetCode data' },
           { icon:BarChart2, iconColor:'#a78bfa', bg:'rgba(124,58,237,0.1)', label:'Global Ranking',  value:dashboardStats.ranking ? `#${dashboardStats.ranking.toLocaleString('en-IN')}` : 'N/A',  sub:dashboardStats.ranking ? 'Live ranking from LeetCode' : 'No ranking available' },
+          { icon:Code2,     iconColor:'#38bdf8', bg:'rgba(56,189,248,0.1)',  label:'Contest Rating',  value:dashboardStats.contestRating || 'N/A',                  sub:dashboardStats.contestRating ? 'Contest profile' : 'No contest data' },
         ].map(({ icon:Icon, iconColor, bg, label, value, sub }) => (
           <div key={label} style={{ ...card, padding:'20px' }}>
             <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'12px' }}>
@@ -435,74 +491,118 @@ const AnalyticsTab = ({ profileData, loading, error }) => {
 
       {/* Middle row */}
       <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : isTablet ? '1fr' : '1fr 1fr 1fr', gap:'16px' }}>
-        {/* Difficulty + Bar */}
+        {/* Difficulty + Pie */}
         <div style={{ ...card, padding:'22px' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'18px' }}>Difficulty breakdown</p>
+          <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'18px' }}>Difficulty distribution</p>
+          <ResponsiveContainer width="100%" height={180}>
+            <PieChart>
+              <Pie data={pieData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={72} paddingAngle={3}>
+                {pieData.map((entry) => <Cell key={entry.name} fill={entry.color}/>)}
+              </Pie>
+              <Tooltip content={<BarTip/>}/>
+            </PieChart>
+          </ResponsiveContainer>
           <div style={{ display:'flex', flexDirection:'column', gap:'14px', marginBottom:'22px' }}>
-            {[
-              { label:'Easy',   val:98,  total:150, color:'#4ade80' },
-              { label:'Medium', val:119, total:200, color:'#fbbf24' },
-              { label:'Hard',   val:30,  total:100, color:'#f87171' },
-            ].map(({ label, val, total, color }) => (
-              <div key={label}>
+            {difficultyBreakdown.map(({ difficulty, count, color }) => {
+              const pct = totalDifficulty ? Math.round((Number(count || 0) / totalDifficulty) * 100) : 0
+              return (
+              <div key={difficulty}>
                 <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'6px' }}>
-                  <span style={{ fontSize:'13px', color:'var(--foreground-muted)' }}>{label}</span>
-                  <span style={{ fontSize:'13px', fontWeight:500, color:'var(--foreground)' }}>{val} / {total}</span>
+                  <span style={{ fontSize:'13px', color:'var(--foreground-muted)' }}>{difficulty}</span>
+                  <span style={{ fontSize:'13px', fontWeight:500, color:'var(--foreground)' }}>{count} solved</span>
                 </div>
                 <div style={{ height:'6px', borderRadius:'3px', background:'var(--muted)', overflow:'hidden' }}>
-                  <div style={{ height:'100%', width:`${(val/total)*100}%`, background:color, borderRadius:'3px', transition:'width .7s ease' }}/>
+                  <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:'3px', transition:'width .7s ease' }}/>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
           <p style={{ fontSize:'14px', fontWeight:600, color:'var(--foreground)', marginBottom:'12px' }}>This week</p>
           <ResponsiveContainer width="100%" height={110}>
-            <BarChart data={WEEKLY} margin={{ top:0, right:0, left:-28, bottom:0 }}>
+            <BarChart data={weeklyData} margin={{ top:0, right:0, left:-28, bottom:0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
               <XAxis dataKey="day" tick={{ fill:'var(--foreground-muted)', fontSize:11 }} axisLine={false} tickLine={false}/>
               <YAxis tick={{ fill:'var(--foreground-muted)', fontSize:11 }} axisLine={false} tickLine={false}/>
               <Tooltip content={<BarTip/>} cursor={{ fill:'rgba(124,58,237,0.06)' }}/>
               <Bar dataKey="solved" radius={[4,4,0,0]}>
-                {WEEKLY.map((_,i) => <Cell key={i} fill={i===5?'#7C3AED':'rgba(124,58,237,0.2)'}/>)}
+                {weeklyData.map((_,i) => <Cell key={i} fill={i===5?'#7C3AED':'rgba(124,58,237,0.2)'}/>)}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Radar */}
+        {/* Topic Bar */}
         <div style={{ ...card, padding:'22px' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'4px' }}>Topic mastery radar</p>
-          <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'8px' }}>Skill distribution across core topics</p>
+          <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'4px' }}>Topic-wise solved questions</p>
+          <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'8px' }}>Problems solved across DSA topics</p>
           <ResponsiveContainer width="100%" height={240}>
-            <RadarChart data={radarData} margin={{ top:10, right:20, left:20, bottom:10 }}>
-              <PolarGrid stroke="rgba(124,58,237,0.15)"/>
-              <PolarAngleAxis dataKey="topic" tick={{ fill:'var(--foreground-muted)', fontSize:12 }}/>
-              <Radar name="Mastery" dataKey="score" stroke="#7C3AED" fill="#7C3AED" fillOpacity={0.2} strokeWidth={2}/>
-              <Tooltip content={<RadarTip/>}/>
-            </RadarChart>
+            <BarChart data={topicCards} margin={{ top:10, right:0, left:-24, bottom:36 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <XAxis dataKey="topic" interval={0} angle={-28} textAnchor="end" tick={{ fill:'var(--foreground-muted)', fontSize:10 }} axisLine={false} tickLine={false}/>
+              <YAxis tick={{ fill:'var(--foreground-muted)', fontSize:11 }} axisLine={false} tickLine={false}/>
+              <Tooltip content={<BarTip/>} cursor={{ fill:'rgba(124,58,237,0.06)' }}/>
+              <Bar dataKey="solved" radius={[4,4,0,0]}>
+                {topicCards.map((item) => <Cell key={item.topic} fill={item.color}/>)}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
         </div>
 
         {/* Ring + Weak */}
         <div style={{ ...card, padding:'22px', display:'flex', flexDirection:'column', gap:'20px' }}>
-          <ReadinessRing value={profileData?.placementReadiness || 74}/>
+          <ReadinessRing value={Math.round(analyticsData?.placementReadiness ?? profileData?.placementReadiness ?? 0)}/>
           <div style={{ height:'1px', background:'var(--border)' }}/>
           <div>
             <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'14px' }}>
               <AlertTriangle size={16} style={{ color:'#fbbf24' }}/>
-              <p style={{ fontSize:'14px', fontWeight:600, color:'var(--foreground)' }}>Weak topics</p>
+              <p style={{ fontSize:'14px', fontWeight:600, color:'var(--foreground)' }}>Progress insights</p>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-              {weakTopics.map(({ topic, pct }) => (
-                <div key={topic} style={{ padding:'12px 14px', borderRadius:'12px', background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)' }}>
+              {[
+                { label:'Strongest topic', value:strongestTopics[0]?.topic || 'N/A' },
+                { label:'Needs improvement', value:weakTopics[0]?.topic || 'N/A' },
+                { label:'Most practiced', value:mostPracticedTopic?.topic || 'N/A' },
+                { label:'Least practiced', value:leastPracticedTopic?.topic || 'N/A' },
+                { label:'Most solved difficulty', value:mostSolvedDifficulty },
+              ].map(({ label, value }) => (
+                <div key={label} style={{ padding:'12px 14px', borderRadius:'12px', background:'rgba(245,158,11,0.06)', border:'1px solid rgba(245,158,11,0.2)' }}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
-                    <span style={{ fontSize:'13px', fontWeight:600, color:'#fbbf24' }}>{topic}</span>
-                    <span style={{ fontSize:'12px', color:'#fbbf24' }}>{pct}% done</span>
+                    <span style={{ fontSize:'12px', color:'var(--foreground-muted)' }}>{label}</span>
+                    <span style={{ fontSize:'13px', fontWeight:600, color:'#fbbf24' }}>{value}</span>
                   </div>
-                  <p style={{ fontSize:'11px', color:'var(--foreground-muted)', lineHeight:1.5 }}>Focus on this topic to improve your placement readiness.</p>
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap:'16px' }}>
+        <div style={{ ...card, padding:'22px' }}>
+          <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'4px' }}>Submission activity over time</p>
+          <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'8px' }}>Recent coding activity from calendar or trend data</p>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={activityLine.length ? activityLine : weeklyData} margin={{ top:10, right:12, left:-22, bottom:24 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+              <XAxis dataKey={activityLine.length ? 'label' : 'day'} tick={{ fill:'var(--foreground-muted)', fontSize:10 }} axisLine={false} tickLine={false}/>
+              <YAxis tick={{ fill:'var(--foreground-muted)', fontSize:11 }} axisLine={false} tickLine={false}/>
+              <Tooltip content={<BarTip/>}/>
+              <Line type="monotone" dataKey="solved" stroke="#38bdf8" strokeWidth={2.5} dot={{ r:3, fill:'#38bdf8' }}/>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div style={{ ...card, padding:'22px' }}>
+          <p style={{ fontSize:'15px', fontWeight:600, color:'var(--foreground)', marginBottom:'4px' }}>Coding consistency</p>
+          <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'16px' }}>Daily activity intensity</p>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(7, minmax(18px, 1fr))', gap:'7px' }}>
+            {heatmapEntries.length ? heatmapEntries.map(([key, value]) => {
+              const opacity = Math.max(0.08, Number(value || 0) / 9)
+              return <div key={key} title={`${value} activity`} style={{ aspectRatio:'1', borderRadius:'6px', background:`rgba(34,197,94,${opacity})`, border:'1px solid rgba(34,197,94,0.12)' }}/>
+            }) : Array.from({ length:28 }).map((_, index) => (
+              <div key={index} style={{ aspectRatio:'1', borderRadius:'6px', background:'var(--muted)', border:'1px solid var(--border)' }}/>
+            ))}
           </div>
         </div>
       </div>
@@ -546,12 +646,12 @@ const AnalyticsTab = ({ profileData, loading, error }) => {
             </div>
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:'10px', maxHeight:'320px', overflowY:'auto' }} className="scrollbar-hide">
-            {filteredTopics.map(({ topic, solved, total, color }) => {
-              const pct = Math.round((solved/total)*100)
+            {filteredTopics.map(({ topic, solved, total, color, percentage }) => {
+              const pct = Math.round(percentage || 0)
               return (
                 <div key={topic} style={{ display:'flex', alignItems:'center', gap:'10px' }}>
                   <div style={{ width:'8px', height:'8px', borderRadius:'50%', background:color, flexShrink:0 }}/>
-                  <span style={{ fontSize:'13px', color:'var(--foreground-muted)', width:'100px', flexShrink:0 }}>{topic}</span>
+                  <span style={{ fontSize:'13px', color:'var(--foreground-muted)', width:'130px', flexShrink:0 }}>{topic}</span>
                   <div style={{ flex:1, height:'5px', background:'var(--muted)', borderRadius:'3px', overflow:'hidden' }}>
                     <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:'3px', transition:'width .5s ease' }}/>
                   </div>
@@ -571,7 +671,7 @@ const AnalyticsTab = ({ profileData, loading, error }) => {
           </div>
           <p style={{ fontSize:'13px', color:'var(--foreground-muted)', marginBottom:'16px' }}>Based on your weak topics and placement frequency</p>
           <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-            {recommendationItems.map(({ id, title, tag, diff, reason, url }) => {
+            {(recommendationItems.length ? recommendationItems : RECOMMENDATIONS).map(({ id, title, tag, diff, reason, url }) => {
               const ds = { Easy:{bg:'rgba(34,197,94,0.12)',color:'#4ade80',border:'rgba(34,197,94,0.25)'}, Medium:{bg:'rgba(245,158,11,0.12)',color:'#fbbf24',border:'rgba(245,158,11,0.25)'}, Hard:{bg:'rgba(239,68,68,0.12)',color:'#f87171',border:'rgba(239,68,68,0.25)'} }[diff]
               const ts = TAG_STYLE[tag] || { bg:'rgba(124,58,237,0.1)', color:'#a78bfa', border:'rgba(124,58,237,0.2)' }
               return (
@@ -612,6 +712,7 @@ const DSA = () => {
   const [activeTab, setActiveTab] = useState('analytics')
   const [usernameInput, setUsernameInput] = useState('')
   const [profileData, setProfileData] = useState(null)
+  const [analyticsData, setAnalyticsData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const bp = useBreakpoint()
@@ -630,11 +731,16 @@ const DSA = () => {
     setError('')
 
     try {
-      const response = await api.get(`/dsa/profile/${encodeURIComponent(username)}`)
-      setProfileData(response.data)
-      setUsernameInput(response.data.username || username)
+      const [profileResponse, analyticsResponse] = await Promise.all([
+        api.get(`/dsa/profile/${encodeURIComponent(username)}`),
+        api.get(`/dsa/analytics/${encodeURIComponent(username)}`),
+      ])
+      setProfileData(profileResponse.data)
+      setAnalyticsData(analyticsResponse.data)
+      setUsernameInput(profileResponse.data.username || username)
     } catch (err) {
       setProfileData(null)
+      setAnalyticsData(null)
       setError(err?.response?.data?.detail || 'Unable to fetch LeetCode profile right now.')
     } finally {
       setLoading(false)
@@ -714,7 +820,7 @@ const DSA = () => {
       </div>
 
       {/* Tab content */}
-      {activeTab === 'analytics' ? <AnalyticsTab profileData={profileData} loading={loading} error={error} /> : <ProblemSheet profileData={profileData} />}
+      {activeTab === 'analytics' ? <AnalyticsTab profileData={profileData} analyticsData={analyticsData} loading={loading} error={error} /> : <ProblemSheet profileData={profileData} />}
     </div>
   )
 }
