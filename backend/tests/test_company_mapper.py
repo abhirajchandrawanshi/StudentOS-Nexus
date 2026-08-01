@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.dsa.pipelines.company_mapper import recommend_topics
 from app.dsa.question_dataset import filter_questions, load_questions
+from app.dsa.question_selection_engine import select_questions
 from app.dsa.routes import router
 
 app = FastAPI()
@@ -43,3 +44,18 @@ def test_question_dataset_loader_filters_by_company_difficulty_and_topic():
     assert all("Amazon" in question["companies"] for question in filtered)
     assert all(question["difficulty"] == "Easy" for question in filtered)
     assert all("Arrays" in question["topics"] for question in filtered)
+
+
+def test_question_selection_engine_returns_twenty_ranked_recommendations():
+    recommendations = select_questions(
+        company="Amazon",
+        weak_topics=["Graphs", "DP"],
+        completed_questions=[1, 2, 3],
+    )
+
+    assert len(recommendations) == 20
+    assert {item["question"]["id"] for item in recommendations} == {item["question"]["id"] for item in recommendations}
+    assert all(item["priority"] >= 1 for item in recommendations)
+    assert all(item["difficulty"] in {"Easy", "Medium", "Hard"} for item in recommendations)
+    assert all("reason" in item for item in recommendations)
+    assert all("expected_time" in item for item in recommendations)

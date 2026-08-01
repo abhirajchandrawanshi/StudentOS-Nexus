@@ -29,6 +29,7 @@ from app.dsa.ai_gap_analyzer import (
 )
 from app.dsa.utils.excel_generator import generate_dsa_spreadsheet_bytes
 from app.dsa.pipelines.company_mapper import recommend_topics
+from app.dsa.question_selection_engine import select_questions
 
 logger = logging.getLogger("dsa_routes")
 logger.setLevel(logging.INFO)
@@ -53,6 +54,29 @@ async def get_company_topic_recommendations(company_name: str):
     return {
         "company": company_name.strip().title(),
         "topics": topics,
+    }
+
+
+@router.post("/question-selection")
+async def get_question_selection(payload: Dict[str, Any]):
+    """Return 20 tailored questions using company, weak topics, and completed questions."""
+    company = (payload.get("company") or "").strip()
+    weak_topics = payload.get("weak_topics") or []
+    completed_questions = payload.get("completed_questions") or []
+
+    if not company:
+        raise HTTPException(status_code=400, detail="Company name cannot be empty")
+
+    recommendations = select_questions(
+        company=company,
+        weak_topics=weak_topics,
+        completed_questions=completed_questions,
+    )
+
+    return {
+        "company": company.title(),
+        "count": len(recommendations),
+        "questions": recommendations,
     }
 
 
