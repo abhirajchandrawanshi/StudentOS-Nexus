@@ -60,6 +60,7 @@ class ParsedResume(BaseModel):
     education: List[EducationEntry] = Field(default_factory=list)
     projects: List[ProjectEntry] = Field(default_factory=list)
     certifications: List[CertificationEntry] = Field(default_factory=list)
+    achievements: List[str] = Field(default_factory=list)
 
     # Detected contact / meta
     email_found: bool = False
@@ -124,6 +125,18 @@ class GeminiInsights(BaseModel):
     gemini_holistic_score: float = Field(
         default=50.0, ge=0.0, le=100.0,
         description="Gemini's holistic placement readiness estimate",
+    )
+    placement_readiness_level: str = Field(
+        default="Moderate",
+        description="Qualitative placement readiness level",
+    )
+    learning_roadmap: List[str] = Field(
+        default_factory=list,
+        description="Recommended learning roadmap to improve readiness",
+    )
+    missing_competencies: List[str] = Field(
+        default_factory=list,
+        description="Key missing skills or competencies to address",
     )
 
 

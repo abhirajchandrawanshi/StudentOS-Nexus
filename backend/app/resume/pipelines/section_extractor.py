@@ -84,6 +84,7 @@ def parse_resume_sections(raw: RawResumeText) -> ParsedResume:
     education = _parse_education(sections.get("education", ""))
     projects = _parse_projects(sections.get("projects", ""))
     certifications = _parse_certifications(sections.get("certifications", ""))
+    achievements = _parse_achievements(sections.get("achievements", ""))
     summary = sections.get("summary", "").strip() or None
 
     return ParsedResume(
@@ -96,6 +97,7 @@ def parse_resume_sections(raw: RawResumeText) -> ParsedResume:
         education=education,
         projects=projects,
         certifications=certifications,
+        achievements=achievements,
         **contact,
     )
 
@@ -352,6 +354,14 @@ def _parse_projects(text: str) -> List[ProjectEntry]:
             ))
 
     return entries
+
+
+def _parse_achievements(text: str) -> List[str]:
+    """Extract achievements or accomplishments as a list of statements."""
+    if not text:
+        return []
+
+    return [strip_bullets(line) for line in split_into_lines(text)]
 
 
 # ─── Certifications Parser ────────────────────────────────────────────────────

@@ -221,7 +221,11 @@ SECTION_PATTERNS: Dict[str, List[str]] = {
     ],
     "certifications": [
         r"\bcertification(s)?\b", r"\bcertificate(s)?\b", r"\bcourses?\b",
-        r"\bawards?\b", r"\bachievements?\b", r"\bhonors?\b",
+        r"\bawards?\b", r"\bhonors?\b",
+    ],
+    "achievements": [
+        r"\bachievements?\b", r"\bkey\s+achievements?\b", r"\bnotable\s+achievements?\b",
+        r"\baccomplishments?\b", r"\bhighlights?\b",
     ],
 }
 
