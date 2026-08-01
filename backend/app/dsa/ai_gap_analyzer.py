@@ -3,8 +3,16 @@ import json
 import logging
 from typing import Dict, Any, List
 from dotenv import load_dotenv
-import google.generativeai as genai
-from pypdf import PdfReader
+
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
+
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
 
 from app.dsa.company_mapper import aggregate_company_topic_priorities, get_company_profile
 
@@ -16,12 +24,16 @@ load_dotenv()
 
 # Configure Google Generative AI client
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    # Using the standard gemini-2.5-flash model as configured in app/rag/generator.py
-    gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+if genai is not None and GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        # Using the standard gemini-2.5-flash model as configured in app/rag/generator.py
+        gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+    except Exception as exc:
+        logger.warning(f"Failed to initialize Gemini client: {exc}. Gap Analyzer will run in heuristic mode.")
+        gemini_model = None
 else:
-    logger.warning("GEMINI_API_KEY not configured. Gap Analyzer will run in dynamic heuristic mode.")
+    logger.warning("GEMINI_API_KEY not configured or google.generativeai is unavailable. Gap Analyzer will run in dynamic heuristic mode.")
     gemini_model = None
 
 
@@ -29,6 +41,10 @@ def extract_text_from_pdf(file_path: str) -> str:
     """
     Parses an uploaded PDF file and extracts all readable text using PyPDF.
     """
+    if PdfReader is None:
+        logger.warning("PyPDF is unavailable; resume text extraction is skipped.")
+        return ""
+
     try:
         reader = PdfReader(file_path)
         text = ""
