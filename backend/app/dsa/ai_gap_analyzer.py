@@ -3,8 +3,18 @@ import json
 import logging
 from typing import Dict, Any, List
 from dotenv import load_dotenv
-import google.generativeai as genai
-from pypdf import PdfReader
+
+try:
+    from pypdf import PdfReader
+except Exception:  # pragma: no cover - fallback when PDF support is unavailable
+    PdfReader = None
+
+try:
+    import google.generativeai as genai
+except Exception as exc:  # pragma: no cover - defensive fallback for environments without Gemini support
+    genai = None
+    logger = logging.getLogger("dsa_ai_gap_analyzer")
+    logger.warning(f"Gemini SDK unavailable: {exc}. Falling back to local heuristic mode.")
 
 from app.dsa.company_mapper import aggregate_company_topic_priorities, get_company_profile
 
@@ -14,14 +24,18 @@ logger.setLevel(logging.INFO)
 # Load environment variables
 load_dotenv()
 
-# Configure Google Generative AI client
+# Configure Google Generative AI client when the SDK is available
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    # Using the standard gemini-2.5-flash model as configured in app/rag/generator.py
-    gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+if genai is not None and GEMINI_API_KEY:
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        # Using the standard gemini-2.5-flash model as configured in app/rag/generator.py
+        gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        logger.warning(f"Unable to initialize Gemini client: {exc}. Falling back to heuristic mode.")
+        gemini_model = None
 else:
-    logger.warning("GEMINI_API_KEY not configured. Gap Analyzer will run in dynamic heuristic mode.")
+    logger.warning("GEMINI_API_KEY not configured or Gemini SDK unavailable. Gap Analyzer will run in dynamic heuristic mode.")
     gemini_model = None
 
 
@@ -29,6 +43,10 @@ def extract_text_from_pdf(file_path: str) -> str:
     """
     Parses an uploaded PDF file and extracts all readable text using PyPDF.
     """
+    if PdfReader is None:
+        logger.warning("PyPDF is not installed; PDF text extraction is unavailable.")
+        return ""
+
     try:
         reader = PdfReader(file_path)
         text = ""

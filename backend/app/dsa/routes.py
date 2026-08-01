@@ -28,6 +28,7 @@ from app.dsa.ai_gap_analyzer import (
     analyze_gap_and_priorities
 )
 from app.dsa.utils.excel_generator import generate_dsa_spreadsheet_bytes
+from app.dsa.pipelines.company_mapper import recommend_topics
 
 logger = logging.getLogger("dsa_routes")
 logger.setLevel(logging.INFO)
@@ -37,6 +38,22 @@ router = APIRouter()
 # In-memory storage for active roadmap plans generated during the session.
 # Allows the Export endpoint to retrieve questions by UUID instantly without a full database.
 ACTIVE_ROADMAPS: Dict[str, Dict[str, Any]] = {}
+
+
+@router.get("/company-topics/{company_name}")
+async def get_company_topic_recommendations(company_name: str):
+    """Expose company-specific interview topic recommendations for backend consumers."""
+    if not company_name or not company_name.strip():
+        raise HTTPException(status_code=400, detail="Company name cannot be empty")
+
+    topics = recommend_topics(company_name)
+    if not topics:
+        raise HTTPException(status_code=404, detail="No topic recommendations found for the provided company")
+
+    return {
+        "company": company_name.strip().title(),
+        "topics": topics,
+    }
 
 
 @router.get("/profile/{username}", response_model=DSAProfileResponse)
