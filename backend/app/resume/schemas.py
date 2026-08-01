@@ -143,9 +143,14 @@ class ResumeAnalysisReport(BaseModel):
     # ── Primary scores ──────────────────────────────────────────────
     ats_score: float = Field(ge=0.0, le=100.0, description="Overall ATS compatibility (0–100)")
     domain_match_pct: float = Field(ge=0.0, le=100.0, description="Skill overlap with domain (%)")
+    semantic_match_score: float = Field(
+        ge=0.0, le=1.0,
+        description="Semantic similarity score against the target domain job description (0.0–1.0)",
+    )
     placement_readiness_score: float = Field(ge=0.0, le=100.0, description="Composite readiness (0–100)")
 
     # ── Actionable outputs ──────────────────────────────────────────
+    matched_skills: List[str] = Field(default_factory=list)
     missing_skills: List[str] = Field(default_factory=list)
     weak_sections: List[str] = Field(default_factory=list)
     formatting_suggestions: List[str] = Field(default_factory=list)
