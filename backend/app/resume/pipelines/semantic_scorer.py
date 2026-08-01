@@ -89,8 +89,35 @@ def score_semantic(
 
     try:
         # ── 1. Resume-level semantic similarity ───────────────────────────────
-        # Use first 1000 chars of raw text to keep embedding fast
-        resume_snippet = parsed.raw_text[:1500].strip()
+        # Use a focused document built from key resume sections.
+        parts = []
+
+        if parsed.summary:
+            parts.append(parsed.summary)
+
+        if parsed.skills:
+            parts.append("Skills: " + ", ".join(parsed.skills))
+
+        for exp in parsed.experience:
+            exp_text = []
+            if exp.role:
+                exp_text.append(exp.role)
+            if exp.company:
+                exp_text.append(exp.company)
+            if exp.description:
+                exp_text.append(exp.description)
+            if exp_text:
+                parts.append(" ".join(exp_text))
+
+        for proj in parsed.projects:
+            proj_text = [proj.name]
+            if proj.description:
+                proj_text.append(proj.description)
+            if proj.technologies:
+                proj_text.append("Technologies: " + ", ".join(proj.technologies))
+            parts.append(" ".join(proj_text))
+
+        resume_snippet = "\n".join(parts)[:2000].strip()
         if not resume_snippet:
             return _fallback_result(parsed, target_domain)
 
