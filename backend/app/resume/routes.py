@@ -227,6 +227,21 @@ async def rewrite_resume(
     if not file_bytes:
         raise HTTPException(status_code=422, detail="File is empty.")
 
+    max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File exceeds the {MAX_FILE_SIZE_MB} MB size limit.",
+        )
+
+    content_type = file.content_type or ""
+    filename = file.filename or "resume.pdf"
+    if content_type not in ALLOWED_MIME_TYPES and not filename.lower().endswith(".pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Only PDF files are accepted. Received: '{content_type}'",
+        )
+
     # Get Gemini
     try:
         gemini_model = get_gemini_client()
@@ -235,7 +250,7 @@ async def rewrite_resume(
 
     # Extract Text
     try:
-        raw_text_obj = extract_pdf_text(file_bytes, file.filename or "resume.pdf")
+        raw_text_obj = await extract_pdf_text(file_bytes, filename)
         if not raw_text_obj or not raw_text_obj.full_text.strip():
             raise ValueError("No text extracted from PDF.")
     except Exception as exc:

@@ -1,21 +1,18 @@
 import logging
-import tempfile
-import os
-import shutil
 from datetime import datetime
 from typing import Dict, List, Any
-from fastapi import APIRouter, HTTPException, UploadFile, File, Response
+from fastapi import APIRouter, HTTPException, Response, Depends, Query
 
 from app.dsa.models import (
     DSAProfileResponse,
-    ResumeUploadResponse,
-    GapAnalysisRequest,
-    GapAnalysisResponse,
-    GapAnalysisReport,
     RoadmapGenerateRequest,
     RoadmapGenerateResponse,
     QuestionItem,
-    ExtractedSkills
+    AnalyticsDashboardResponse,
+    QuestionCompleteRequest,
+    QuestionCompleteResponse,
+    QuestionHistoryResponse,
+    QuestionHistoryItem,
 )
 from app.dsa.leetcode_service import fetch_leetcode_profile
 from app.dsa.analytics_engine import analyze_profile_stats
@@ -23,10 +20,11 @@ from app.dsa.recommendation_engine import (
     generate_dsa_recommendations,
     generate_dynamic_leetcode_sheet
 )
-from app.dsa.ai_gap_analyzer import (
-    parse_resume_skills_with_ai,
-    analyze_gap_and_priorities
-)
+from app.dsa.analytics_service import DSAAnalyticsService
+from app.dsa.dependencies import get_dsa_repo, get_dsa_gemini_client
+from app.dsa.question_bank import get_all_questions
+from app.dsa.repository import DSARepository, DSARepositoryError, DSAStatelessModeError
+from app.dsa.solved_questions import infer_solved_question_slugs
 from app.dsa.utils.excel_generator import generate_dsa_spreadsheet_bytes
 
 logger = logging.getLogger("dsa_routes")
@@ -37,6 +35,30 @@ router = APIRouter()
 # In-memory storage for active roadmap plans generated during the session.
 # Allows the Export endpoint to retrieve questions by UUID instantly without a full database.
 ACTIVE_ROADMAPS: Dict[str, Dict[str, Any]] = {}
+
+
+@router.get("/analytics/{username}", response_model=AnalyticsDashboardResponse)
+async def get_dsa_analytics_dashboard(
+    username: str,
+    company: str = Query(default="Amazon"),
+    domain: str = Query(default="Backend Developer"),
+    repo: DSARepository = Depends(get_dsa_repo),
+):
+    """Unified analytics endpoint for dashboard insights, recommendations, roadmap, readiness, and AI mentor guidance."""
+    if not username or username.strip() == "":
+        raise HTTPException(status_code=400, detail="Username cannot be empty")
+
+    try:
+        service = DSAAnalyticsService(repo=repo, gemini_model=get_dsa_gemini_client())
+        payload = await service.build_dashboard(
+            username=username,
+            company=company,
+            domain=domain,
+        )
+        return AnalyticsDashboardResponse(**payload)
+    except Exception as exc:
+        logger.error("Analytics dashboard generation failed for '%s': %s", username, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate analytics dashboard")
 
 
 @router.get("/profile/{username}", response_model=DSAProfileResponse)
@@ -83,101 +105,6 @@ async def get_leetcode_profile_by_username(username: str):
         )
 
 
-@router.post("/resume/upload", response_model=ResumeUploadResponse)
-async def upload_resume_and_extract_skills(file: UploadFile = File(...)):
-    """
-    Endpoint that handles PDF resume uploads.
-    Extracts developer career domain, primary programming languages, and tech stack.
-    """
-    logger.info(f"Received resume upload request: {file.filename}")
-    
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF resume files are supported.")
-        
-    # Write to a temporary file safely
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-            shutil.copyfileobj(file.file, tmp)
-            tmp_path = tmp.name
-            
-        # Invoke our AI parsing engine
-        extracted = await parse_resume_skills_with_ai(tmp_path)
-        
-        # Clean up temporary file
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-            
-        skills_obj = ExtractedSkills(
-            careerDomain=extracted.get("careerDomain", "General Software Engineering"),
-            primaryLanguages=extracted.get("primaryLanguages", []),
-            techStack=extracted.get("techStack", [])
-        )
-        
-        logger.info(f"Successfully extracted resume skills for file: {file.filename}")
-        return ResumeUploadResponse(
-            filename=file.filename,
-            status="success",
-            extractedSkills=skills_obj
-        )
-        
-    except Exception as e:
-        logger.error(f"Error occurred during resume parsing: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while extracting skills from the resume: {str(e)}"
-        )
-
-
-@router.post("/gap-analysis", response_model=GapAnalysisResponse)
-async def trigger_ai_gap_analysis(request: GapAnalysisRequest):
-    """
-    Endpoint that combines LeetCode coverage, resume skills, and target companies
-    to perform a dynamic AI Gap Analysis.
-    Calculates precise, dynamic topic priority percentages summing to exactly 100%.
-    """
-    logger.info(f"Received gap analysis request for: {request.username}")
-    
-    try:
-        # 1. Fetch LeetCode stats to evaluate weakness percentages
-        profile_data = await fetch_leetcode_profile(request.username)
-        analyzed = analyze_profile_stats(profile_data)
-        
-        # 2. Trigger the gap analysis reasoner
-        skills_dict = {
-            "careerDomain": request.extractedSkills.careerDomain,
-            "primaryLanguages": request.extractedSkills.primaryLanguages,
-            "techStack": request.extractedSkills.techStack
-        }
-        
-        report = await analyze_gap_and_priorities(
-            leetcode_topics=analyzed["topics"],
-            resume_skills=skills_dict,
-            target_companies=request.targetCompanies
-        )
-        
-        analysis_report = GapAnalysisReport(
-            inferredCompanyPatterns=report["inferredCompanyPatterns"],
-            readinessAssessment=report["readinessAssessment"],
-            dynamicTopicPriorities=report["dynamicTopicPriorities"]
-        )
-        
-        response = GapAnalysisResponse(
-            username=request.username,
-            timestamp=datetime.utcnow().isoformat() + "Z",
-            analysis=analysis_report
-        )
-        
-        logger.info(f"Successfully completed gap analysis for '{request.username}'")
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error conducting gap analysis for '{request.username}': {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while performing RAG gap analysis: {str(e)}"
-        )
-
-
 @router.post("/roadmap/generate", response_model=RoadmapGenerateResponse)
 async def generate_placement_roadmap(request: RoadmapGenerateRequest):
     """
@@ -193,12 +120,10 @@ async def generate_placement_roadmap(request: RoadmapGenerateRequest):
         
         # We can extract recent tag slug details or mock a small set of solved problems
         # to ensure the dynamic sheet does not recommend items the student completed
-        solved_slugs = []
-        tag_pools = profile_data.get("tagProblemCounts", {})
-        for pool in ["fundamental", "intermediate", "advanced"]:
-            for item in tag_pools.get(pool, []):
-                if item.get("problemsSolved", 0) > 0:
-                    solved_slugs.append(item.get("tagSlug", ""))
+        solved_slugs = infer_solved_question_slugs(
+            profile_data=profile_data,
+            questions=get_all_questions(),
+        )
                     
         # 2. Run the dynamic allocation picker
         questions = generate_dynamic_leetcode_sheet(
@@ -298,3 +223,85 @@ async def export_roadmap_to_spreadsheet(roadmap_id: str):
             status_code=500,
             detail=f"An error occurred during Excel workbook generation: {str(e)}"
         )
+
+
+@router.post("/questions/{question_id}/complete", response_model=QuestionCompleteResponse)
+async def mark_question_complete(
+    question_id: int,
+    request: QuestionCompleteRequest,
+    repo: DSARepository = Depends(get_dsa_repo),
+):
+    """Persist question completion history when DB is configured; no-op success in stateless mode."""
+    try:
+        history_result = await repo.save_question_completion(
+            username=request.username,
+            question_id=question_id,
+            status=request.status,
+            topic=request.topic,
+            difficulty=request.difficulty,
+            company=request.company,
+        )
+        return QuestionCompleteResponse(
+            success=True,
+            message="Question completion recorded" if history_result.persisted else "Stateless mode: completion accepted",
+            historyId=history_result.record_id,
+        )
+    except DSAStatelessModeError as exc:
+        logger.warning("Stateless mode write request: %s", exc)
+        return QuestionCompleteResponse(
+            success=True,
+            message="Stateless mode: completion accepted",
+            historyId=None,
+        )
+    except DSARepositoryError as exc:
+        logger.error("Failed to persist question completion: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Database write failed while updating completion")
+    except Exception as exc:
+        logger.error("Failed to mark question as complete: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update question completion")
+
+
+@router.get("/history", response_model=QuestionHistoryResponse)
+async def get_history(
+    username: str = Query(..., min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    repo: DSARepository = Depends(get_dsa_repo),
+):
+    """Return question completion history for a user."""
+    rows = await repo.get_question_history(username=username, limit=limit)
+    items = [
+        QuestionHistoryItem(
+            id=str(row.id),
+            username=row.username,
+            questionId=row.question_id,
+            status=row.status,
+            topic=row.topic,
+            difficulty=row.difficulty,
+            company=row.company,
+            createdAt=row.created_at.isoformat(),
+        )
+        for row in rows
+    ]
+    return QuestionHistoryResponse(username=username, items=items, total=len(items))
+
+
+@router.get("/roadmap")
+async def get_latest_roadmap(
+    username: str = Query(..., min_length=1),
+    repo: DSARepository = Depends(get_dsa_repo),
+):
+    """Fetch latest saved roadmap for a user when persistence is enabled."""
+    row = await repo.get_latest_roadmap(username=username)
+    if row is None:
+        return {
+            "username": username,
+            "roadmap": None,
+            "message": "No persisted roadmap found (or stateless mode enabled).",
+        }
+
+    return {
+        "username": username,
+        "roadmapId": row.roadmap_id,
+        "roadmap": row.roadmap_payload,
+        "createdAt": row.created_at.isoformat(),
+    }

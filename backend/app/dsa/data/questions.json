@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "title": "Two Sum",
+    "difficulty": "Easy",
+    "topics": ["Arrays", "HashMap"],
+    "companies": ["Amazon", "Google"],
+    "url": "https://leetcode.com/problems/two-sum/"
+  },
+  {
+    "id": 2,
+    "title": "Best Time to Buy and Sell Stock",
+    "difficulty": "Easy",
+    "topics": ["Arrays", "DP"],
+    "companies": ["Amazon", "Meta"],
+    "url": "https://leetcode.com/problems/best-time-to-buy-and-sell-stock/"
+  },
+  {
+    "id": 3,
+    "title": "Valid Parentheses",
+    "difficulty": "Easy",
+    "topics": ["Stack", "Strings"],
+    "companies": ["Microsoft", "Google"],
+    "url": "https://leetcode.com/problems/valid-parentheses/"
+  },
+  {
+    "id": 4,
+    "title": "Merge Two Sorted Lists",
+    "difficulty": "Easy",
+    "topics": ["Linked List"],
+    "companies": ["Amazon"],
+    "url": "https://leetcode.com/problems/merge-two-sorted-lists/"
+  },
+  {
+    "id": 5,
+    "title": "Binary Search",
+    "difficulty": "Easy",
+    "topics": ["Arrays", "Binary Search"],
+    "companies": ["Amazon", "Microsoft"],
+    "url": "https://leetcode.com/problems/binary-search/"
+  },
+  {
+    "id": 6,
+    "title": "Longest Substring Without Repeating Characters",
+    "difficulty": "Medium",
+    "topics": ["Strings", "Sliding Window"],
+    "companies": ["Amazon", "Google"],
+    "url": "https://leetcode.com/problems/longest-substring-without-repeating-characters/"
+  },
+  {
+    "id": 7,
+    "title": "Top K Frequent Elements",
+    "difficulty": "Medium",
+    "topics": ["Heap", "HashMap"],
+    "companies": ["Amazon", "Meta"],
+    "url": "https://leetcode.com/problems/top-k-frequent-elements/"
+  },
+  {
+    "id": 8,
+    "title": "Number of Islands",
+    "difficulty": "Medium",
+    "topics": ["Graphs", "DFS"],
+    "companies": ["Amazon", "Google"],
+    "url": "https://leetcode.com/problems/number-of-islands/"
+  },
+  {
+    "id": 9,
+    "title": "Clone Graph",
+    "difficulty": "Medium",
+    "topics": ["Graphs", "DFS"],
+    "companies": ["Google", "Meta"],
+    "url": "https://leetcode.com/problems/clone-graph/"
+  },
+  {
+    "id": 10,
+    "title": "House Robber",
+    "difficulty": "Medium",
+    "topics": ["DP", "Arrays"],
+    "companies": ["Amazon", "Microsoft"],
+    "url": "https://leetcode.com/problems/house-robber/"
+  },
+  {
+    "id": 11,
+    "title": "Maximum Depth of Binary Tree",
+    "difficulty": "Easy",
+    "topics": ["Trees", "DFS"],
+    "companies": ["Amazon", "Google"],
+    "url": "https://leetcode.com/problems/maximum-depth-of-binary-tree/"
+  },
+  {
+    "id": 12,
+    "title": "Serialize and Deserialize Binary Tree",
+    "difficulty": "Hard",
+    "topics": ["Trees", "Graphs"],
+    "companies": ["Google", "Meta"],
+    "url": "https://leetcode.com/problems/serialize-and-deserialize-binary-tree/"
+  },
+  {
+    "id": 13,
+    "title": "Word Break",
+    "difficulty": "Medium",
+    "topics": ["DP", "Strings"],
+    "companies": ["Amazon", "Google"],
+    "url": "https://leetcode.com/problems/word-break/"
+  },
+  {
+    "id": 14,
+    "title": "Course Schedule",
+    "difficulty": "Medium",
+    "topics": ["Graphs", "Topological Sort"],
+    "companies": ["Amazon", "Meta"],
+    "url": "https://leetcode.com/problems/course-schedule/"
+  },
+  {
+    "id": 15,
+    "title": "Coin Change",
+    "difficulty": "Medium",
+    "topics": ["DP", "Arrays"],
+    "companies": ["Amazon", "Microsoft"],
+    "url": "https://leetcode.com/problems/coin-change/"
+  }
+]

@@ -1,26 +1,65 @@
+﻿# ============================
+# FastAPI Backend
+# ============================
 fastapi==0.104.1
 uvicorn==0.24.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-pypdf==4.0.1
-chromadb==0.4.24
-sentence-transformers==2.2.2
-langchain==0.1.0
-langchain-text-splitters==0.0.1
-google-generativeai==0.3.0
+python-multipart==0.0.9
+aiofiles==23.2.1
+
+# ============================
+# HTTP Client
+# ============================
 httpx==0.25.2
+
+# ============================
+# AI / LLM
+# ============================
+google-generativeai==0.3.0
+
+# ============================
+# RAG & Embeddings
+# ============================
+chromadb==0.4.24
+sentence-transformers==3.0.1
+opentelemetry-api==1.27.0
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp-proto-grpc==1.27.0
+opentelemetry-exporter-otlp-proto-common==1.27.0
+opentelemetry-proto==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+opentelemetry-instrumentation==0.48b0
+opentelemetry-instrumentation-asgi==0.48b0
+opentelemetry-semantic-conventions==0.48b0
+opentelemetry-util-http==0.48b0
+
+langchain==0.1.20
+langchain-community==0.0.38
+langchain-core==0.1.52
+langchain-text-splitters==0.0.2
+
+# ============================
+# PDF Processing
+# ============================
+pypdf==4.0.1
+pdfplumber==0.10.4
+
+# ============================
+# NLP
+# ============================
+spacy==3.7.4
+
+# ============================
+# Excel Support
+# ============================
 openpyxl==3.1.5
 
-# ── Resume Analysis Module ─────────────────────────────────────────────
+# ============================
+# Database
+# ============================
 sqlalchemy==2.0.50
-# asyncpg==0.29.0  # Requires Microsoft Visual C++ Build Tools on Windows
-# Alternative (Windows-friendly pre-compiled wheels):
-# psycopg2-binary==2.9.9  # for sync driver
-# Install asyncpg only if you have C++ Build Tools: pip install asyncpg
 alembic==1.13.1
-pdfplumber==0.10.4
-spacy==3.7.4
-aiofiles==23.2.1
-python-multipart==0.0.9
-# After install, run: python -m spacy download en_core_web_sm
+asyncpg==0.29.0
+psycopg[binary]==3.3.4

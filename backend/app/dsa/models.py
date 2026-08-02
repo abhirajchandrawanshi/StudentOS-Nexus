@@ -92,3 +92,95 @@ class RoadmapGenerateResponse(BaseModel):
     totalQuestions: int
     topicDistribution: Dict[str, int]
     questions: List[QuestionItem]
+
+
+# ─── EXTENDED ANALYTICS SCHEMAS (Unified Dashboard Response) ────────
+
+class TopicScore(BaseModel):
+    topic: str
+    coverage_pct: float
+    company_weight: float
+    score: float
+
+
+class CompanyIntelligence(BaseModel):
+    company: str
+    topic_weights: Dict[str, int]
+    frequently_asked_topics: List[str]
+    interview_trends: List[str]
+
+
+class CompanyReadiness(BaseModel):
+    score: float
+    explanation: str
+    factors: Dict[str, object]
+
+
+class AIMentor(BaseModel):
+    studyAdvice: str
+    weeklyGoals: List[str]
+    interviewTips: List[str]
+    motivation: str
+    source: str
+
+
+class RoadmapWeek(BaseModel):
+    week: int
+    topics: List[str]
+    questions: List[QuestionItem]
+    hours: int
+    milestones: List[str]
+
+
+class RoadmapPlan(BaseModel):
+    company: str
+    domain: str
+    durationWeeks: int
+    weeks: List[RoadmapWeek]
+
+
+class AnalyticsDashboardResponse(DSAProfileResponse):
+    recommended_topics: List[str] = []
+    recommended_questions: List[QuestionItem] = []
+    roadmap: Optional[RoadmapPlan] = None
+    company_readiness: Optional[CompanyReadiness] = None
+    weak_topics: List[str] = []
+    strong_topics: List[str] = []
+    missing_topics: List[str] = []
+    topic_scores: List[TopicScore] = []
+    company_intelligence: Optional[CompanyIntelligence] = None
+    ai_mentor: Optional[AIMentor] = None
+    roadmap_id: Optional[str] = None
+    domain: Optional[str] = None
+    company: Optional[str] = None
+
+
+class QuestionCompleteRequest(BaseModel):
+    username: str
+    status: str = "completed"
+    topic: Optional[str] = None
+    difficulty: Optional[str] = None
+    company: Optional[str] = None
+
+
+class QuestionCompleteResponse(BaseModel):
+    success: bool
+    message: str
+    historyId: Optional[str] = None
+
+
+class QuestionHistoryItem(BaseModel):
+    id: str
+    username: str
+    questionId: int
+    status: str
+    topic: Optional[str] = None
+    difficulty: Optional[str] = None
+    company: Optional[str] = None
+    createdAt: str
+
+
+class QuestionHistoryResponse(BaseModel):
+    username: str
+    items: List[QuestionHistoryItem]
+    total: int
