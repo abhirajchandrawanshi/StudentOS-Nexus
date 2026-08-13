@@ -15,6 +15,7 @@ loading a second model instance. Falls back gracefully if embedder unavailable.
 from __future__ import annotations
 
 import logging
+import sys
 from typing import List
 
 import numpy as np
@@ -35,6 +36,15 @@ logger = logging.getLogger("resume.pipelines.semantic_scorer")
 _model = None
 
 
+def _log_exception(prefix: str, exc: Exception) -> None:
+    logger.exception(
+        "%s: %s: %s",
+        prefix,
+        type(exc).__name__,
+        exc,
+    )
+
+
 def _get_model():
     """
     Load the SentenceTransformer model.
@@ -45,13 +55,20 @@ def _get_model():
     if _model is not None:
         return _model
 
+    logger.info("Semantic scorer Python executable: %s", sys.executable)
+
     try:
-        from app.rag.embedder import model as rag_model
-        _model = rag_model
-        logger.info("Semantic scorer: reusing existing RAG embedder model.")
-        return _model
-    except Exception:
-        pass
+        from app.rag.embedder import get_model as get_rag_model
+
+        rag_model = get_rag_model()
+        if rag_model is not None:
+            _model = rag_model
+            logger.info("Semantic scorer: reusing existing RAG embedder model.")
+            return _model
+
+        logger.warning("Semantic scorer: app.rag.embedder.get_model() returned None.")
+    except Exception as exc:
+        _log_exception("Semantic scorer: failed to import/reuse app.rag.embedder.model", exc)
 
     try:
         from sentence_transformers import SentenceTransformer
@@ -59,7 +76,7 @@ def _get_model():
         logger.info("Semantic scorer: loaded all-MiniLM-L6-v2 independently.")
         return _model
     except Exception as exc:
-        logger.warning(f"sentence-transformers not available: {exc}. Semantic scoring disabled.")
+        _log_exception("Semantic scorer: failed to import/load SentenceTransformer", exc)
         return None
 
 
@@ -89,8 +106,9 @@ def score_semantic(
 
     try:
         # ── 1. Resume-level semantic similarity ───────────────────────────────
-        # Use first 1000 chars of raw text to keep embedding fast
-        resume_snippet = parsed.raw_text[:1500].strip()
+        # Build focused content from skills + summary + experience titles
+        # rather than blindly truncating raw text (which may be header noise).
+        resume_snippet = _build_resume_embedding_text(parsed)
         if not resume_snippet:
             return _fallback_result(parsed, target_domain)
 
@@ -231,6 +249,32 @@ def _build_project_reasoning(
         reasoning += f" No direct technology overlap with {domain} requirements detected."
 
     return reasoning
+
+
+def _build_resume_embedding_text(parsed: ParsedResume) -> str:
+    """
+    Build a focused, information-dense text snippet from the parsed resume
+    for embedding — avoids noise from raw text truncation.
+    Targets ~800 chars to keep embedding fast.
+    """
+    parts = []
+    if parsed.summary:
+        parts.append(parsed.summary[:300])
+    if parsed.skills:
+        parts.append("Skills: " + ", ".join(parsed.skills[:30]))
+    for exp in parsed.experience[:3]:
+        role_line = " ".join(filter(None, [exp.role, "at", exp.company]))
+        if exp.technologies:
+            role_line += " using " + ", ".join(exp.technologies[:8])
+        parts.append(role_line)
+    for proj in parsed.projects[:3]:
+        proj_line = proj.name
+        if proj.technologies:
+            proj_line += ": " + ", ".join(proj.technologies[:8])
+        parts.append(proj_line)
+    combined = " ".join(parts).strip()
+    # Fall back to raw text if we couldn't extract structured content
+    return combined or parsed.raw_text[:1500].strip()
 
 
 def _fallback_result(parsed: ParsedResume, target_domain: str) -> SemanticScoringResult:

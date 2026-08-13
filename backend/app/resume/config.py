@@ -78,7 +78,7 @@ DOMAIN_SKILL_MAP: Dict[str, Dict[str, List[str]]] = {
     },
     "AI/ML Engineer": {
         "core": [
-            "python", "pytorch", "tensorflow", "keras", "scikit-learn",
+            "machine learning", "python", "pytorch", "tensorflow", "keras", "scikit-learn",
             "numpy", "pandas", "opencv", "huggingface", "transformers",
             "llm", "rag", "fine-tuning", "nlp", "computer vision",
             "reinforcement learning", "mlops",
@@ -221,7 +221,9 @@ SECTION_PATTERNS: Dict[str, List[str]] = {
     ],
     "certifications": [
         r"\bcertification(s)?\b", r"\bcertificate(s)?\b", r"\bcourses?\b",
-        r"\bawards?\b", r"\bachievements?\b", r"\bhonors?\b",
+    ],
+    "achievements": [
+        r"\bachievements?\b", r"\bawards?\b", r"\bhonou?rs?\b",
     ],
 }
 

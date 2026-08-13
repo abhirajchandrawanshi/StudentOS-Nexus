@@ -305,9 +305,23 @@ def _empty_semantic_result(parsed: ParsedResume) -> SemanticScoringResult:
 
 
 def _empty_gemini_insights(ats_result: ATSScoringResult, skill_result: SkillAnalysisResult) -> GeminiInsights:
+    from app.resume.schemas import ImprovementSuggestion
+    from app.resume.pipelines.gemini_analyzer import _score_to_readiness_level, _default_roadmap
+    improvements = [
+        ImprovementSuggestion(
+            original_text="Current resume content",
+            suggested_text=suggestion,
+            reasoning="Automated ATS suggestion.",
+        )
+        for suggestion in ats_result.formatting_suggestions[:3]
+    ]
+    score = round((ats_result.ats_score + skill_result.domain_match_pct) / 2, 1)
     return GeminiInsights(
         ai_summary="AI analysis was not available for this request.",
         top_strengths=[],
-        top_improvements=ats_result.formatting_suggestions[:3],
-        gemini_holistic_score=round((ats_result.ats_score + skill_result.domain_match_pct) / 2, 1),
+        top_improvements=improvements,
+        gemini_holistic_score=score,
+        placement_readiness_level=_score_to_readiness_level(score),
+        learning_roadmap=_default_roadmap(skill_result),
+        missing_competencies=skill_result.missing_skills[:8],
     )

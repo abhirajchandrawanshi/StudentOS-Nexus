@@ -69,7 +69,7 @@ def parse_resume_sections(raw: RawResumeText) -> ParsedResume:
     """
     Parse raw resume text into a structured ParsedResume object.
     """
-    text = raw.full_text
+    text = _normalise_section_boundaries(raw.full_text)
 
     # 1. Detect contact info
     contact = detect_contact_info(text)
@@ -84,6 +84,7 @@ def parse_resume_sections(raw: RawResumeText) -> ParsedResume:
     education = _parse_education(sections.get("education", ""))
     projects = _parse_projects(sections.get("projects", ""))
     certifications = _parse_certifications(sections.get("certifications", ""))
+    achievements = _parse_achievements(sections.get("achievements", ""))
     summary = sections.get("summary", "").strip() or None
 
     return ParsedResume(
@@ -96,6 +97,7 @@ def parse_resume_sections(raw: RawResumeText) -> ParsedResume:
         education=education,
         projects=projects,
         certifications=certifications,
+        achievements=achievements,
         **contact,
     )
 
@@ -155,6 +157,33 @@ def _detect_section_header(line: str) -> Optional[str]:
             if pat.search(line):
                 return section
     return None
+
+
+def _normalise_section_boundaries(text: str) -> str:
+    """
+    Recover missing newlines around all-caps section headers from noisy PDF extraction.
+    Example: "...github.comSUMMARYExperienced..." -> "...github.com\nSUMMARY\nExperienced..."
+    """
+    if not text:
+        return text
+
+    headers = [
+        "SUMMARY",
+        "PROFILE",
+        "OBJECTIVE",
+        "SKILLS",
+        "EXPERIENCE",
+        "EDUCATION",
+        "PROJECTS",
+        "CERTIFICATIONS",
+        "ACHIEVEMENTS",
+        "AWARDS",
+    ]
+    pattern = r"(?<!\n)(" + "|".join(headers) + r")(?=[A-Z]|\s|$)"
+    normalised = re.sub(pattern, r"\n\1\n", text)
+    # Collapse repeated blank lines created by replacements.
+    normalised = re.sub(r"\n{3,}", "\n\n", normalised)
+    return normalised
 
 
 # ─── Skills Parser ───────────────────────────────────────────────────────────
@@ -389,6 +418,19 @@ def _parse_certifications(text: str) -> List[CertificationEntry]:
             ))
 
     return entries
+
+
+def _parse_achievements(text: str) -> List[str]:
+    """Parse free-form achievements/awards lines without inventing content."""
+    if not text:
+        return []
+
+    items: List[str] = []
+    for line in split_into_lines(text):
+        clean = strip_bullets(line).strip()
+        if clean:
+            items.append(clean[:220])
+    return items
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────

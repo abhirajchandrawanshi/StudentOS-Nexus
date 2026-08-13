@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 from typing import Optional
 
 from app.resume.schemas import RawResumeText
@@ -33,12 +34,34 @@ async def extract_pdf_text(file_bytes: bytes, filename: str = "resume.pdf") -> R
 
     result = await _parse_with_pdfplumber(file_bytes)
 
-    if not result or len(result.full_text.strip()) < 20:
+    # For noisy PDFs, pdfplumber may return garbled text while pypdf returns cleaner text.
+    # Compare quality and keep the better extraction instead of assuming parser priority.
+    should_try_fallback = (
+        result is None
+        or len(result.full_text.strip()) < 20
+        or _text_quality_score(result.full_text) < 0.60
+        or not _has_resume_markers(result.full_text)
+    )
+
+    if should_try_fallback:
         logger.warning(
             f"pdfplumber returned insufficient text ({len(result.full_text.strip()) if result else 0} chars) "
             f"— trying pypdf fallback."
         )
-        result = await _parse_with_pypdf(file_bytes)
+        fallback = await _parse_with_pypdf(file_bytes)
+        if result is None:
+            result = fallback
+        else:
+            primary_score = _text_quality_score(result.full_text)
+            fallback_score = _text_quality_score(fallback.full_text)
+            if fallback_score > primary_score:
+                logger.info(
+                    "Using pypdf output over pdfplumber based on quality score "
+                    "(%.3f > %.3f)",
+                    fallback_score,
+                    primary_score,
+                )
+                result = fallback
 
     logger.info(
         f"PDF parsed: {result.page_count} pages, "
@@ -46,6 +69,42 @@ async def extract_pdf_text(file_bytes: bytes, filename: str = "resume.pdf") -> R
         f"method={result.extraction_method}"
     )
     return result
+
+
+def _text_quality_score(text: str) -> float:
+    """Estimate extracted-text quality to reject heavily garbled parser output."""
+    if not text:
+        return 0.0
+
+    tokens = re.findall(r"[A-Za-z]{2,}", text)
+    if not tokens:
+        return 0.0
+
+    vowelish = sum(1 for t in tokens if re.search(r"[aeiouAEIOU]", t))
+    vowel_ratio = vowelish / len(tokens)
+
+    header_hits = len(re.findall(
+        r"\b(summary|skills|experience|education|projects|certifications|achievements)\b",
+        text,
+        flags=re.IGNORECASE,
+    ))
+    header_score = min(header_hits / 3.0, 1.0)
+
+    length_score = min(len(tokens) / 120.0, 1.0)
+    return 0.55 * vowel_ratio + 0.30 * header_score + 0.15 * length_score
+
+
+def _has_resume_markers(text: str) -> bool:
+    """Quick signal that extracted text contains likely resume structure."""
+    if not text:
+        return False
+    if re.search(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", text):
+        return True
+    return bool(re.search(
+        r"\b(summary|skills|experience|education|projects|certifications|achievements)\b",
+        text,
+        flags=re.IGNORECASE,
+    ))
 
 
 # ─── pdfplumber ───────────────────────────────────────────────────────────────

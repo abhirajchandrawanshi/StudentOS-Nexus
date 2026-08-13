@@ -60,6 +60,7 @@ class ParsedResume(BaseModel):
     education: List[EducationEntry] = Field(default_factory=list)
     projects: List[ProjectEntry] = Field(default_factory=list)
     certifications: List[CertificationEntry] = Field(default_factory=list)
+    achievements: List[str] = Field(default_factory=list)
 
     # Detected contact / meta
     email_found: bool = False
@@ -125,6 +126,18 @@ class GeminiInsights(BaseModel):
         default=50.0, ge=0.0, le=100.0,
         description="Gemini's holistic placement readiness estimate",
     )
+    placement_readiness_level: str = Field(
+        default="Needs Work",
+        description="Human-readable readiness label: Ready / Almost Ready / Needs Work / Not Ready",
+    )
+    learning_roadmap: List[str] = Field(
+        default_factory=list,
+        description="Ordered list of learning steps to close skill gaps",
+    )
+    missing_competencies: List[str] = Field(
+        default_factory=list,
+        description="Key competencies absent from the resume for the target domain",
+    )
 
 
 # ─── Full Analysis Report ─────────────────────────────────────────────────────
@@ -138,7 +151,7 @@ class ResumeAnalysisReport(BaseModel):
     )
     target_domain: str
     filename: str
-    analyzed_at: datetime = Field(default_factory=datetime.utcnow)
+    analyzed_at: datetime = Field(default_factory=lambda: datetime.now(tz=None))
 
     # ── Primary scores ──────────────────────────────────────────────
     ats_score: float = Field(ge=0.0, le=100.0, description="Overall ATS compatibility (0–100)")

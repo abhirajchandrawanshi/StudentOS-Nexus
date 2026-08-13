@@ -87,37 +87,60 @@ async def validate_pdf_file(file: UploadFile) -> UploadFile:
     return file
 
 
-# ─── Gemini Client ────────────────────────────────────────────────────────────
+# ── Gemini Client ──────────────────────────────────────────────────────
 
-_gemini_model = None
+# ─────────────────────────────────────────────────────────────────────────────
+# Gemini Client
+# ─────────────────────────────────────────────────────────────────────────────
+
+_gemini_client = None
 
 
 def get_gemini_client():
     """
-    Returns a configured Gemini GenerativeModel instance.
-    Raises HTTPException 503 if GEMINI_API_KEY is not set.
-    Lazily initialised and cached for performance.
-    """
-    global _gemini_model
-    if _gemini_model is not None:
-        return _gemini_model
+    Returns a configured Google GenAI client.
 
-    api_key = os.getenv("GEMINI_API_KEY", "")
+    The API key is loaded from GEMINI_API_KEY or GOOGLE_API_KEY.
+    The client is lazily initialized and cached for reuse.
+    """
+
+    global _gemini_client
+
+    # Return the existing client if already initialized
+    if _gemini_client is not None:
+        return _gemini_client
+
+    # Load API key
+    api_key = (
+        os.getenv("GEMINI_API_KEY", "").strip()
+        or os.getenv("GOOGLE_API_KEY", "").strip()
+    )
+
+    # No API key
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Gemini API key not configured. Set GEMINI_API_KEY in .env",
+            detail=(
+                "Gemini API key not configured. "
+                "Set GEMINI_API_KEY or GOOGLE_API_KEY in .env"
+            ),
         )
 
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        _gemini_model = genai.GenerativeModel("gemini-1.5-flash")
-        logger.info("Gemini client initialised (gemini-1.5-flash).")
-        return _gemini_model
+        # New Google GenAI SDK
+        from google import genai
+
+        # Create client
+        _gemini_client = genai.Client(api_key=api_key)
+
+        logger.info("Gemini client initialized successfully.")
+
+        return _gemini_client
+
     except Exception as exc:
-        logger.error(f"Failed to initialise Gemini client: {exc}")
+        logger.error("Failed to initialize Gemini client: %s", exc)
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not initialise Gemini client: {exc}",
+            detail=f"Could not initialize Gemini client: {exc}",
         )

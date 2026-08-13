@@ -24,6 +24,49 @@ from app.resume.schemas import (
 from app.resume.utils.text_utils import clean_skill, clamp
 
 logger = logging.getLogger("resume.pipelines.skill_analyzer")
+# Explicit aliases only.
+# These represent equivalent wording, not inferred technologies.
+SKILL_ALIASES = {
+    "machine learning": {
+        "machine learning",
+        "machine-learning",
+        "ml",
+    },
+    "deep learning": {
+        "deep learning",
+        "deep-learning",
+    },
+    "computer vision": {
+        "computer vision",
+        "computer-vision",
+        "cv",
+    },
+    "natural language processing": {
+        "natural language processing",
+        "nlp",
+    },
+    "large language model": {
+        "large language model",
+        "large language models",
+        "llm",
+        "llms",
+    },
+    "fine-tuning": {
+        "fine-tuning",
+        "fine tuning",
+        "fine tuning models",
+    },
+    "model deployment": {
+        "model deployment",
+        "model deployments",
+        "deploying models",
+    },
+    "model evaluation": {
+        "model evaluation",
+        "model evaluations",
+        "evaluating models",
+    },
+}
 
 
 def analyze_skills(parsed: ParsedResume, target_domain: str) -> SkillAnalysisResult:
@@ -119,30 +162,106 @@ def analyze_skills(parsed: ParsedResume, target_domain: str) -> SkillAnalysisRes
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
-def _is_skill_present(skill: str, candidate_set: Set[str], full_text: str) -> bool:
+def _is_skill_present(
+    skill: str,
+    candidate_set: Set[str],
+    full_text: str,
+) -> bool:
     """
-    Check if a skill token is present in the resume.
-    Uses both exact set membership and substring regex search.
+    Check whether a required skill is explicitly present.
+
+    Matching rules:
+    1. Exact normalized skill match.
+    2. Explicit alias match.
+    3. Explicit textual occurrence in the resume.
+
+    No semantic inference is performed.
     """
+
+    skill = clean_skill(skill)
+
+    # 1. Exact candidate skill match
     if skill in candidate_set:
         return True
 
-    # Regex word-boundary check in full text (handles multi-word skills like "node.js")
-    pattern = re.escape(skill)
-    try:
-        return bool(re.search(r"\b" + pattern + r"\b", full_text))
-    except re.error:
-        return skill in full_text
+    # 2. Explicit aliases
+    aliases = SKILL_ALIASES.get(skill, {skill})
 
+    for alias in aliases:
+        alias = clean_skill(alias)
+
+        if alias in candidate_set:
+            return True
+
+        if _contains_keyword(alias, full_text):
+            return True
+
+    # 3. Direct occurrence in resume text
+    return _contains_keyword(skill, full_text)
+
+def _contains_keyword(keyword: str, text: str) -> bool:
+    """
+    Check whether a keyword occurs as an explicit phrase.
+
+    Uses explicit token boundaries so that:
+        docker  !=  dockerized
+        r       !=  restructured
+
+    Still supports technical terms containing punctuation such as:
+        c++
+        node.js
+        scikit-learn
+        aws sagemaker
+    """
+
+    keyword = clean_skill(keyword)
+    text = text.lower()
+
+    if not keyword:
+        return False
+
+    # Escape regex characters so technical names are treated literally.
+    pattern = re.escape(keyword)
+
+    # A keyword must not be directly attached to another
+    # alphanumeric character.
+    #
+    # This prevents:
+    #   docker  -> dockerized
+    #   r       -> restructured
+    #
+    # while still allowing punctuation-based technical terms.
+    try:
+        return bool(
+            re.search(
+                rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])",
+                text,
+            )
+        )
+    except re.error:
+        return keyword in text
 
 def _count_keyword_occurrences(keywords: List[str], text: str) -> dict:
-    """Count how many times each keyword appears in the text."""
+    """Count explicit occurrences of each keyword in the text."""
     counts = {}
+    text = text.lower()
+
     for kw in keywords:
-        pattern = re.escape(kw)
+        keyword = clean_skill(kw)
+
+        if not keyword:
+            counts[kw] = 0
+            continue
+
+        pattern = re.escape(keyword)
+
         try:
-            matches = re.findall(r"\b" + pattern + r"\b", text)
+            matches = re.findall(
+                rf"(?<![A-Za-z0-9]){pattern}(?![A-Za-z0-9])",
+                text,
+            )
             counts[kw] = len(matches)
         except re.error:
-            counts[kw] = text.count(kw)
+            counts[kw] = 0
+
     return counts
